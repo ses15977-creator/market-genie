@@ -1,185 +1,457 @@
+import os
 import datetime
 import io
 import zipfile
-import os
 import pandas as pd
 import streamlit as st
 
-# 페이지 설정
+# 페이지 설정 및 디자인 테마
 st.set_page_config(
-    page_title="마켓지니 판매 관리 프로그램",
-    page_icon="📦",
-    layout="wide",
+    page_title="마켓지니 마켓관리 프로그램", page_icon="📈", layout="wide"
 )
 
-DB_FILE = "market_history.csv"
+# Custom CSS
+st.markdown("""
+    <style>
+    .main { background-color: #f8f9fa; }
+    .stButton>button {
+        background-color: #ff4b4b;
+        color: white;
+        border-radius: 8px;
+        font-weight: bold;
+        height: 3em;
+        width: 100%;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
-def load_history():
-    if os.path.exists(DB_FILE):
-        try:
-            df = pd.read_csv(DB_FILE)
-            if "날짜" in df.columns:
-                return df
-        except:
-            pass
-    return pd.DataFrame(columns=[
-        "날짜", "판매처", "상품명", "수량", "매출액", "원가", "배송비", "수수료", "순이익"
-    ])
-
-def save_history(new_row_df):
-    df = load_history()
-    df = pd.concat([df, new_row_df], ignore_index=True)
-    df.to_csv(DB_FILE, index=False)
-
-st.title("📦 마켓지니 판매 관리 프로그램")
+st.title("🌟 마켓지니 마켓관리 프로그램")
 st.markdown(
-    "**1단계:** 쿠팡, 스마트스토어, 올웨이즈 등 플랫폼별 발주서를 업로드하여 **키스틱, 냉동식품, 가람식품** 세 군데 공급처별 양식으로 분할 다운로드<br>"
-    "**2단계:** **판매 플랫폼별(쿠팡, 스마트스토어, 올웨이즈 등)**로 구분된 상세 매출 및 순이익 분석 대시보드 확인",
-    unsafe_allow_html=True,
+    "**샵모아** 및 **올웨이즈** 주문 파일을 업로드하면, 지정된 고정 판매가와 원가로"
+    " **매출·순이익·수수료**를 계산하고 일자/월별로 자동 누적 관리합니다!"
 )
 st.markdown("---")
 
-tab1, tab2 = st.tabs(
-    ["📥 1단계: 발주서 업로드 및 3개 공급처별 분할", "📈 2단계: 플랫폼별 종합 매출 분석 대시보드"]
+# 누적 데이터 저장 파일 경로
+DB_FILE = "market_history.csv"
+
+
+# 누적 데이터 불러오기 함수
+def load_history():
+  if os.path.exists(DB_FILE):
+    try:
+      df = pd.read_csv(DB_FILE)
+      if "날짜" in df.columns:
+        return df
+    except:
+      pass
+  return pd.DataFrame(
+      columns=[
+          "날짜",
+          "판매처",
+          "상품명",
+          "수량",
+          "매출액",
+          "원가",
+          "배송비",
+          "수수료",
+          "순이익",
+      ]
+  )
+
+
+# 누적 데이터 저장 함수
+def save_history(new_df):
+  existing_df = load_history()
+  if not existing_df.empty and not new_df.empty:
+    combined = pd.concat([existing_df, new_df], ignore_index=True)
+    # 중복 주문 방지를 위해 날짜, 판매처, 매출액 등으로 단순 병합 (옵션)
+    combined.to_csv(DB_FILE, index=False, encoding="utf-8-sig")
+  elif not new_df.empty:
+    new_df.to_csv(DB_FILE, index=False, encoding="utf-8-sig")
+
+
+# 파일 업로드 섹션
+col_up1, col_up2 = st.columns(2)
+with col_up1:
+  st.subheader("🛒 샵모아 주문 파일")
+  shopmoa_file = st.file_uploader(
+      "샵모아 엑셀 업로드", type=["xlsx", "xls"], key="shop"
+  )
+with col_up2:
+  st.subheader("🚀 올웨이즈 주문 파일")
+  always_file = st.file_uploader(
+      "올웨이즈 엑셀 업로드", type=["xlsx", "xls"], key="always"
+  )
+
+# 오늘 날짜 (기본 세팅용)
+today_date_str = datetime.datetime.now().strftime("%Y-%m-%d")
+selected_order_date = st.date_input(
+    "📅 이번 정산(주문) 데이터의 날짜를 선택하세요",
+    datetime.datetime.strptime(today_date_str, "%Y-%m-%d"),
 )
+order_date_str = selected_order_date.strftime("%Y-%m-%d")
 
-# -------------------------------------------------------------------------
-# 1탭: 플랫폼별 발주서 업로드 -> 세 군데 공급처별 분할 다운로드
-# -------------------------------------------------------------------------
-with tab1:
-    st.header("📥 발주서 업로드 및 3개 공급처별 분할 다운로드")
-    st.markdown(
-        "어떤 플랫폼(쿠팡, 스마트스토어, 올웨이즈 등)에서 받은 발주서인지 선택하고 업로드해 주세요. "
-        "데이터를 분석하여 **키스틱, 냉동식품, 가람식품** 세 군데 공급처별 발주 파일로 나누어 드립니다."
-    )
+if st.button("🚀 발주서 변환 및 마켓 정산 분석 시작"):
+  if shopmoa_file is None and always_file is None:
+    st.warning("엑셀 파일을 최소한 하나 이상 업로드해 주세요!")
+  else:
+    all_rows = []
 
-    # 판매 플랫폼 선택
-    platform_choice = st.selectbox(
-        "🏷️ 업로드할 발주서의 판매 플랫폼 선택",
-        ["올웨이즈", "쿠팡", "네이버 스마트스토어", "카카오/기타 플랫폼"]
-    )
+    # 1. 샵모아 파일 읽기
+    if shopmoa_file:
+      df_shop = pd.read_excel(shopmoa_file)
+      for _, row in df_shop.iterrows():
+        site_name = "샵모아"
+        for col in ["사이트", "판매처", "쇼핑몰", "마켓명"]:
+          if col in df_shop.columns and pd.notna(row.get(col)):
+            site_name = str(row.get(col))
+            break
 
-    uploaded_order_file = st.file_uploader(
-        f"[{platform_choice}] 통합 발주서 업로드 (엑셀/파일)", 
-        type=None, 
-        key="up_order"
-    )
+        all_rows.append({
+            "주문번호": str(row.get("주문번호", "")),
+            "판단기준텍스트": str(row.get("상품명", "")),
+            "상품명": str(row.get("상품명", "")),
+            "수량": int(row.get("수량", 1)),
+            "수취인명": str(row.get("수취인명", "")),
+            "전화번호": str(row.get("수취인 전화번호", "")),
+            "휴대폰번호": str(row.get("수취인 핸드폰번호", "")),
+            "주소": str(row.get("수취인주소", "")),
+            "우편번호": str(row.get("우편번호", "")),
+            "배송메모": str(row.get("배송메세지", "")),
+            "판매처": site_name,
+        })
 
-    if st.button("🔄 발주서 분석 및 3개 공급처별 분할하기"):
-        if not uploaded_order_file:
-            st.warning("발주서 파일을 업로드해 주세요!")
+    # 2. 올웨이즈 파일 읽기
+    if always_file:
+      df_alw = pd.read_excel(always_file)
+      for _, row in df_alw.iterrows():
+        all_rows.append({
+            "주문번호": str(row.get("주문아이디", "")),
+            "판단기준텍스트": str(row.get("옵션", "")),
+            "상품명": str(row.get("상품명", "")),
+            "수량": int(row.get("수량", 1)),
+            "수취인명": str(row.get("수령인", "")),
+            "전화번호": str(row.get("수령인 연락처", "")),
+            "휴대폰번호": "",
+            "주소": str(row.get("주소", "")),
+            "우편번호": str(row.get("우편번호", "")),
+            "배송메모": "",
+            "판매처": "올웨이즈",
+        })
+
+    master_df = pd.DataFrame(all_rows)
+
+    냉동_rows = []
+    키스틱_rows = []
+    가람식품_rows = []
+    current_batch_financial = []
+
+    for _, r in master_df.iterrows():
+      check_text = r["판단기준텍스트"]
+      p_name = r["상품명"]
+      orig_qty = r["수량"]
+      base_name = r["수취인명"]
+      platform = r["판매처"]
+      phone = (
+          r["휴대폰번호"]
+          if pd.notna(r["휴대폰번호"]) and r["휴대폰번호"] != ""
+          else r["전화번호"]
+      )
+
+      # ----------------------------------------------------
+      # 1. 키스틱 처리 (고정 판매가 및 원가)
+      # ----------------------------------------------------
+      if "키스틱" in check_text:
+        sets_100 = orig_qty // 2
+        rem_40 = orig_qty % 2
+
+        cost_40 = 113 * 40  # 4,520원
+        cost_100 = 113 * 100  # 11,300원
+        price_40 = 9900
+        price_100 = 19900
+        deliv_per_unit = 2900
+
+        for _ in range(sets_100):
+          current_batch_financial.append({
+              "날짜": order_date_str,
+              "판매처": platform,
+              "상품명": "키스틱 100개입",
+              "수량": 1,
+              "매출액": price_100,
+              "원가": cost_100,
+              "배송비": deliv_per_unit,
+          })
+          키스틱_rows.append({
+              "수령자이름": base_name,
+              "수령자전화": r["전화번호"],
+              "수령자휴대폰": r["휴대폰번호"],
+              "수령자우편번호": r["우편번호"],
+              "수령자주소": r["주소"],
+              1: 1,
+              "배송메모": r["배송메모"],
+              "제조사": "",
+              "카테고리": "",
+              "품절": "",
+              "배송 보류": "",
+              "상품명": "키스틱 15g x 100개",
+              "판매처": "",
+              "주문번호": r["주문번호"],
+              "발주일": "",
+              "관리번호": "",
+              "상태": "",
+              "송장번호": "",
+          })
+
+        for _ in range(rem_40):
+          current_batch_financial.append({
+              "날짜": order_date_str,
+              "판매처": platform,
+              "상품명": "키스틱 40개입",
+              "수량": 1,
+              "매출액": price_40,
+              "원가": cost_40,
+              "배송비": deliv_per_unit,
+          })
+          키스틱_rows.append({
+              "수령자이름": base_name,
+              "수령자전화": r["전화번호"],
+              "수령자휴대폰": r["휴대폰번호"],
+              "수령자우편번호": r["우편번호"],
+              "수령자주소": r["주소"],
+              1: 1,
+              "배송메모": r["배송메모"],
+              "제조사": "",
+              "카테고리": "",
+              "품절": "",
+              "배송 보류": "",
+              "상품명": "키스틱 15g x 40개",
+              "판매처": "",
+              "주문번호": r["주문번호"],
+              "발주일": "",
+              "관리번호": "",
+              "상태": "",
+              "송장번호": "",
+          })
+
+      # ----------------------------------------------------
+      # 2. 어묵바 처리 (가람식품)
+      # ----------------------------------------------------
+      elif "어묵" in check_text:
+        norm_name = "부산어묵 오리지날 어묵바 80g x 10개"
+        single_cost_ex = 536
+        fixed_price = 18900
+
+        if "매콤" in check_text:
+          norm_name = "부산어묵 매콤달콤어묵바 80g x 10개"
+          single_cost_ex = 560
+          fixed_price = 19900
+        elif "오징어" in check_text:
+          norm_name = "부산어묵 오징어야채 어묵바 80g x 10개"
+          single_cost_ex = 575
+          fixed_price = 20900
+        elif "체다" in check_text or "치즈" in check_text:
+          norm_name = "부산어묵 체다치즈맛 어묵바 80g x 10개"
+          single_cost_ex = 646
+          fixed_price = 21900
+
+        net_cost = single_cost_ex * 1.1  # 부가세 포함 원가
+        deliv_per_unit = 4300
+
+        for i in range(1, orig_qty + 1):
+          current_batch_financial.append({
+              "날짜": order_date_str,
+              "판매처": platform,
+              "상품명": norm_name,
+              "수량": 1,
+              "매출액": fixed_price,
+              "원가": net_cost,
+              "배송비": deliv_per_unit,
+          })
+          split_name = f"{base_name}{i}" if orig_qty > 1 else base_name
+          가람식품_rows.append({
+              "받는분성명": split_name,
+              "받는분전화번호": phone,
+              "받는분기타연락처": "",
+              "받는분우편번호": r["우편번호"],
+              "받는분주소": r["주소"],
+              "내품수량": 1,
+              "배송메세지1": r["배송메모"],
+              "출력일": "",
+              "운임구분": "",
+              "기본운임": "",
+              "고객사용번호": "",
+              "품명": norm_name,
+              "판매처": r["판매처"],
+              "주문번호": r["주문번호"],
+              "주문일": order_date_str.replace("-", ""),
+              "판매가": "",
+              "정산금액": "",
+              "거래처코드": 16,
+          })
+
+      # ----------------------------------------------------
+      # 3. 냉동 품목 (고추잡채만두 등)
+      # ----------------------------------------------------
+      else:
+        norm_frozen_name = p_name
+        single_cost = 0
+        fixed_price = 13900
+        deliv_per_unit = 3900
+
+        if "고추잡채" in check_text or "만두" in check_text or "고추잡채" in p_name:
+          norm_frozen_name = "고추잡채군만두 1.2kg"
+          single_cost = 4700
+          fixed_price = 13900
+        elif "김말이" in check_text or "김말이" in p_name:
+          norm_frozen_name = "김말이 튀김 400g"
+          single_cost = 1700
+          fixed_price = 10000  # 기본값
+
+        for _ in range(orig_qty):
+          current_batch_financial.append({
+              "날짜": order_date_str,
+              "판매처": platform,
+              "상품명": norm_frozen_name,
+              "수량": 1,
+              "매출액": fixed_price,
+              "원가": single_cost,
+              "배송비": deliv_per_unit,
+          })
+
+        냉동_rows.append({
+            "수령자이름": base_name,
+            "수령자전화": r["전화번호"],
+            "수령자휴대폰": r["휴대폰번호"],
+            "수령자우편번호": r["우편번호"],
+            "수령자주소": r["주소"],
+            "상품수량": orig_qty,
+            "배송메모": r["배송메모"],
+            "제조사": "",
+            "카테고리": "",
+            "품절": "",
+            "배송 보류": "",
+            "상품명": norm_frozen_name,
+            "판매처": "",
+            "주문번호": r["주문번호"],
+            "발주일": "",
+            "관리번호": "",
+            "상태": "",
+            "송장번호": "",
+        })
+
+    df_current_batch = pd.DataFrame(current_batch_financial)
+    if not df_current_batch.empty:
+      # 수수료 및 순이익 계산 추가
+      def get_comm(row):
+        p = str(row["판매처"])
+        rev = row["매출액"]
+        if "올웨이즈" in p:
+          return rev * 0.07
         else:
-            try:
-                # 파일 읽기 (확장자 유연 대응)
-                fname = uploaded_order_file.name.lower()
-                if fname.endswith('.csv'):
-                    df_order = pd.read_csv(uploaded_order_file)
-                else:
-                    try:
-                        df_order = pd.read_excel(uploaded_order_file, engine='openpyxl')
-                    except:
-                        df_order = pd.read_excel(uploaded_order_file)
+          return rev * 0.055
 
-                zip_buffer = io.BytesIO()
+      df_current_batch["수수료"] = df_current_batch.apply(get_comm, axis=1)
+      df_current_batch["순이익"] = (
+          df_current_batch["매출액"]
+          - df_current_batch["원가"]
+          - df_current_batch["배송비"]
+          - df_current_batch["수수료"]
+      )
+      # 누적 데이터에 저장
+      save_history(df_current_batch)
 
-                with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-                    # 상품명/품목 컬럼 자동 탐색
-                    prod_col = None
-                    for col in df_order.columns:
-                        if any(k in str(col) for k in ["상품명", "품명", "옵션", "상품"]):
-                            prod_col = col
-                            break
+    st.success("✅ 업로드 파일 정산 및 누적 데이터 저장 완료!")
 
-                    # 세 군데 공급처별 분할 로직
-                    if prod_col:
-                        # 1. 키스틱 공급처
-                        df_kistic = df_order[df_order[prod_col].astype(str).str.contains("키스틱|어묵", na=False)]
-                        if not df_kistic.empty:
-                            b_kis = io.BytesIO()
-                            df_kistic.to_excel(b_kis, index=False, engine="openpyxl")
-                            zf.writestr("1_공급처_키스틱_발주서.xlsx", b_kis.getvalue())
+# ----------------------------------------------------
+# 📊 상단 대시보드 및 누적 데이터 조회 섹션
+# ----------------------------------------------------
+st.markdown("---")
+st.header("📈 마켓지니 종합 매출 & 순이익 대시보드")
 
-                        # 2. 냉동식품 공급처
-                        df_frozen = df_order[df_order[prod_col].astype(str).str.contains("만두|냉동|볶음밥", na=False)]
-                        if not df_frozen.empty:
-                            b_fro = io.BytesIO()
-                            df_frozen.to_excel(b_fro, index=False, engine="openpyxl")
-                            zf.writestr("2_공급처_냉동식품_발주서.xlsx", b_fro.getvalue())
+history_df = load_history()
 
-                        # 3. 가람식품 공급처
-                        df_garam = df_order[df_order[prod_col].astype(str).str.contains("어묵바|가람", na=False)]
-                        if not df_garam.empty:
-                            b_gar = io.BytesIO()
-                            df_garam.to_excel(b_gar, index=False, engine="openpyxl")
-                            zf.writestr("3_공급처_가람식품_발주서.xlsx", b_gar.getvalue())
+if not history_df.empty:
+  history_df["날짜"] = pd.to_datetime(history_df["날짜"])
+  history_df["년월"] = history_df["날짜"].dt.strftime("%Y-%m")
 
-                    # 원본 백업 파일 추가
-                    b_bak = io.BytesIO()
-                    df_order.to_excel(b_bak, index=False, engine="openpyxl")
-                    zf.writestr(f"원본_{platform_choice}_통합발주서.xlsx", b_bak.getvalue())
+  # 이번 달 누적 매출 계산
+  current_year_month = datetime.datetime.now().strftime("%Y-%m")
+  this_month_df = history_df[history_df["년월"] == current_year_month]
+  this_month_sales = this_month_df["매출액"].sum()
+  this_month_profit = this_month_df["순이익"].sum()
 
-                # 선택한 플랫폼 명칭으로 매출 데이터 자동 누적 기록
-                total_cnt = len(df_order)
-                est_revenue = total_cnt * 15000  # 건당 평균 추정 단가
-                new_rec = pd.DataFrame([{
-                    "날짜": datetime.datetime.now().strftime("%Y-%m-%d"),
-                    "판매처": platform_choice,
-                    "상품명": f"{platform_choice} 통합 발주 상품",
-                    "수량": total_cnt,
-                    "매출액": est_revenue,
-                    "원가": int(est_revenue * 0.6),
-                    "배송비": total_cnt * 3000,
-                    "수수료": int(est_revenue * 0.1),
-                    "순이익": int(est_revenue * 0.3)
-                }])
-                save_history(new_rec)
+  # 상단 메트릭 카드 (이번 달 누적 강조)
+  c1, c2, c3 = st.columns(3)
+  with c1:
+    st.metric(
+        label=f"📅 {current_year_month} 이번 달 누적 매출",
+        value=f"{int(this_month_sales):,} 원",
+    )
+  with c2:
+    st.metric(
+        label=f"✨ {current_year_month} 이번 달 누적 순이익",
+        value=f"{int(this_month_profit):,} 원",
+    )
+  with c3:
+    total_all_sales = history_df["매출액"].sum()
+    st.metric(
+        label="🏆 전체 누적 총매출", value=f"{int(total_all_sales):,} 원"
+    )
 
-                zip_buffer.seek(0)
-                st.success(f"✨ [{platform_choice}] 발주서가 3개 공급처별로 성공적으로 분할되었습니다! (매출 데이터 반영 완료)")
-                st.download_button(
-                    label="📥 3개 공급처별 분할 발주서 모음 (ZIP) 다운로드",
-                    data=zip_buffer,
-                    file_name=f"{platform_choice}_공급처별발주서모음_{datetime.datetime.now().strftime('%Y%m%d')}.zip",
-                    mime="application/zip",
-                )
-            except Exception as e:
-                st.error(f"파일 처리 중 오류가 발생했습니다: {e}")
+  st.markdown("---")
+  st.subheader("🔍 일자별 / 월별 누적 데이터 검색 및 필터")
 
-# -------------------------------------------------------------------------
-# 2탭: 플랫폼별 종합 매출 분석 대시보드
-# -------------------------------------------------------------------------
-with tab2:
-    st.header("📈 플랫폼별 종합 매출 분석 대시보드")
-    st.markdown("쿠팡, 스마트스토어, 올웨이즈 등 **판매처 플랫폼별로 구분된 매출 및 순이익 현황**을 비교 분석합니다.")
+  f_col1, f_col2 = st.columns(2)
+  with f_col1:
+    search_mode = st.radio("조회 기준 선택", ["월별 보기", "일자별 보기"], horizontal=True)
 
-    history_df = load_history()
-    if not history_df.empty:
-        # 판매처 플랫폼별 요약 지표
-        st.subheader("📊 플랫폼별 매출 및 순이익 비교")
-        if "판매처" in history_df.columns:
-            platform_summary = history_df.groupby("판매처")[["수량", "매출액", "순이익"]].sum().reset_index()
-            # 보기 좋게 컬럼명 정돈
-            platform_summary.columns = ["판매 플랫폼", "총 판매 수량", "총 매출액", "총 순이익"]
-            st.dataframe(platform_summary, use_container_width=True)
-        
-        st.markdown("---")
-        
-        # 월간/전체 요약 메트릭
-        history_df["날짜"] = pd.to_datetime(history_df["날짜"])
-        history_df["년월"] = history_df["날짜"].dt.strftime("%Y-%m")
-        cur_ym = datetime.datetime.now().strftime("%Y-%m")
-        m_df = history_df[history_df["년월"] == cur_ym]
+  if search_mode == "월별 보기":
+    months_list = sorted(history_df["년월"].unique(), reverse=True)
+    selected_month = st.selectbox("조회할 월 선택", months_list)
+    filtered_df = history_df[history_df["년월"] == selected_month]
+  else:
+    dates_list = sorted(
+        history_df["날짜"].dt.strftime("%Y-%m-%d").unique(), reverse=True
+    )
+    selected_date = st.selectbox("조회할 일자 선택", dates_list)
+    filtered_df = history_df[
+        history_df["날짜"].dt.strftime("%Y-%m-%d") == selected_date
+    ]
 
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            st.metric(label=f"📅 {cur_ym} 이번 달 총 매출", value=f"{int(m_df['매출액'].sum()):,} 원")
-        with c2:
-            st.metric(label=f"✨ {cur_ym} 이번 달 총 순이익", value=f"{int(m_df['순이익'].sum()):,} 원")
-        with c3:
-            st.metric(label="🏆 전체 누적 총매출", value=f"{int(history_df['매출액'].sum()):,} 원")
-        
-        st.markdown("---")
-        st.subheader("📋 플랫폼별 전체 거래 상세 내역")
-        st.dataframe(history_df, use_container_width=True)
-    else:
-        st.info("아직 누적된 매출 데이터가 없습니다. 1단계에서 플랫폼별 발주서 파일을 업로드해 주세요.")
+  # 선택된 기간 요약 통계 표
+  if not filtered_df.empty:
+    f_summary = (
+        filtered_df.groupby("판매처")
+        .agg(
+            판매건수=("매출액", "count"),
+            총매출액=("매출액", "sum"),
+            총원가=("원가", "sum"),
+            총배송비=("배송비", "sum"),
+            총수수료=("수수료", "sum"),
+            총순이익=("순이익", "sum"),
+        )
+        .reset_index()
+    )
+
+    f_summary["이익률(%)"] = f_summary.apply(
+        lambda row: (row["총순이익"] / row["총매출액"] * 100)
+        if row["총매출액"] > 0
+        else 0.0,
+        axis=1,
+    )
+
+    disp_sum = f_summary.copy()
+    disp_sum["총매출액"] = disp_sum["총매출액"].apply(lambda x: f"{int(x):,}원")
+    disp_sum["총원가"] = disp_sum["총원가"].apply(lambda x: f"{int(x):,}원")
+    disp_sum["총배송비"] = disp_sum["총배송비"].apply(lambda x: f"{int(x):,}원")
+    disp_sum["총수수료"] = disp_sum["총수수료"].apply(lambda x: f"{int(x):,}원")
+    disp_sum["총순이익"] = disp_sum["총순이익"].apply(lambda x: f"{int(x):,}원")
+    disp_sum["이익률(%)"] = disp_sum["이익률(%)"].apply(lambda x: f"{x:.2f}%")
+
+    st.dataframe(disp_sum, use_container_width=True)
+  else:
+    st.info("선택한 조건에 해당하는 데이터가 없습니다.")
+
+else:
+  st.info("💡 아직 누적된 데이터가 없습니다. 상단에서 주문 엑셀 파일을 업로드해 주세요.")
