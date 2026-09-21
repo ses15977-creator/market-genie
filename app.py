@@ -72,17 +72,17 @@ def save_history(new_df):
     new_df.to_csv(DB_FILE, index=False, encoding="utf-8-sig")
 
 
-# 파일 업로드 섹션 (모바일 호환성 강화)
+# 파일 업로드 섹션 (모바일 호환성을 위해 type 제한을 완전히 제거)
 col_up1, col_up2 = st.columns(2)
 with col_up1:
   st.subheader("🛒 샵모아 주문 파일")
   shopmoa_file = st.file_uploader(
-      "샵모아 엑셀 업로드", type=["xlsx", "xls", "csv"], key="shop"
+      "샵모아 파일 업로드 (엑셀/CSV)", key="shop"
   )
 with col_up2:
   st.subheader("🚀 올웨이즈 주문 파일")
   always_file = st.file_uploader(
-      "올웨이즈 엑셀 업로드", type=["xlsx", "xls", "csv"], key="always"
+      "올웨이즈 파일 업로드 (엑셀/CSV)", key="always"
   )
 
 # 오늘 날짜 (기본 세팅용)
@@ -95,24 +95,30 @@ order_date_str = selected_order_date.strftime("%Y-%m-%d")
 
 if st.button("🚀 발주서 변환 및 마켓 정산 분석 시작"):
   if shopmoa_file is None and always_file is None:
-    st.warning("엑셀 파일을 최소한 하나 이상 업로드해 주세요!")
+    st.warning("주문 파일을 최소한 하나 이상 업로드해 주세요!")
   else:
     all_rows = []
     read_success = True
 
     try:
-      # 1. 샵모아 파일 읽기 (모바일 임시 파일 처리 방식)
+      # 1. 샵모아 파일 읽기 처리
       if shopmoa_file:
+        file_name = shopmoa_file.name.lower()
         with tempfile.NamedTemporaryFile(
-            delete=False, suffix=".xlsx"
+            delete=False,
+            suffix=".csv" if "csv" in file_name else ".xlsx",
         ) as tmp_file:
           tmp_file.write(shopmoa_file.getvalue())
           tmp_path = tmp_file.name
 
         try:
-          df_shop = pd.read_excel(tmp_path)
-        except Exception:
-          df_shop = pd.read_csv(tmp_path)
+          if "csv" in file_name:
+            df_shop = pd.read_csv(tmp_path)
+          else:
+            try:
+              df_shop = pd.read_excel(tmp_path)
+            except Exception:
+              df_shop = pd.read_csv(tmp_path)
         finally:
           if os.path.exists(tmp_path):
             os.remove(tmp_path)
@@ -140,18 +146,24 @@ if st.button("🚀 발주서 변환 및 마켓 정산 분석 시작"):
               "판매처": site_name,
           })
 
-      # 2. 올웨이즈 파일 읽기 (모바일 임시 파일 처리 방식)
+      # 2. 올웨이즈 파일 읽기 처리
       if always_file:
+        file_name_alw = always_file.name.lower()
         with tempfile.NamedTemporaryFile(
-            delete=False, suffix=".xlsx"
+            delete=False,
+            suffix=".csv" if "csv" in file_name_alw else ".xlsx",
         ) as tmp_file:
           tmp_file.write(always_file.getvalue())
           tmp_path = tmp_file.name
 
         try:
-          df_alw = pd.read_excel(tmp_path)
-        except Exception:
-          df_alw = pd.read_csv(tmp_path)
+          if "csv" in file_name_alw:
+            df_alw = pd.read_csv(tmp_path)
+          else:
+            try:
+              df_alw = pd.read_excel(tmp_path)
+            except Exception:
+              df_alw = pd.read_csv(tmp_path)
         finally:
           if os.path.exists(tmp_path):
             os.remove(tmp_path)
@@ -355,4 +367,46 @@ if not history_df.empty:
     selected_month = st.selectbox("조회할 월 선택", months_list)
     filtered_df = history_df[history_df["년월"] == selected_month]
   else:
-    dates_
+    dates_list = sorted(
+        history_df["날짜"].dt.strftime("%Y-%m-%d").unique(), reverse=True
+    )
+    selected_date = st.selectbox("조회할 일자 선택", dates_list)
+    filtered_df = history_df[
+        history_df["날짜"].dt.strftime("%Y-%m-%d") == selected_date
+    ]
+
+  if not filtered_df.empty:
+    f_summary = (
+        filtered_df.groupby("판매처")
+        .agg(
+            판매건수=("매출액", "count"),
+            총매출액=("매출액", "sum"),
+            총원가=("원가", "sum"),
+            총배송비=("배송비", "sum"),
+            총수수료=("수수료", "sum"),
+            총순이익=("순이익", "sum"),
+        )
+        .reset_index()
+    )
+
+    f_summary["이익률(%)"] = f_summary.apply(
+        lambda row: (row["총순이익"] / row["총매출액"] * 100)
+        if row["총매출액"] > 0
+        else 0.0,
+        axis=1,
+    )
+
+    disp_sum = f_summary.copy()
+    disp_sum["총매출액"] = disp_sum["총매출액"].apply(lambda x: f"{int(x):,}원")
+    disp_sum["총원가"] = disp_sum["총원가"].apply(lambda x: f"{int(x):,}원")
+    disp_sum["총배송비"] = disp_sum["총배송비"].apply(lambda x: f"{int(x):,}원")
+    disp_sum["총수수료"] = disp_sum["총수수료"].apply(lambda x: f"{int(x):,}원")
+    disp_sum["총순이익"] = disp_sum["총순이익"].apply(lambda x: f"{int(x):,}원")
+    disp_sum["이익률(%)"] = disp_sum["이익률(%)"].apply(lambda x: f"{x:.2f}%")
+
+    st.dataframe(disp_sum, use_container_width=True)
+  else:
+    st.info("선택한 조건에 해당하는 데이터가 없습니다.")
+
+else:
+  st.info("💡 아직 누적된 데이터가 없습니다. 상단에서 주문 엑셀 파일을 업로드해 주세요.")
