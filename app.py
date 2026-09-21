@@ -7,7 +7,7 @@ import streamlit as st
 
 # 페이지 설정
 st.set_page_config(
-    page_title="마켓지니 발주서 변환 및 매출 분석 프로그램",
+    page_title="마켓지니 판매 관리 프로그램",
     page_icon="📦",
     layout="wide",
 )
@@ -31,7 +31,7 @@ def save_history(new_row_df):
     df = pd.concat([df, new_row_df], ignore_index=True)
     df.to_csv(DB_FILE, index=False)
 
-st.title("📦 마켓지니 발주서 변환 및 매출 분석 프로그램")
+st.title("📦 마켓지니 판매 관리 프로그램")
 st.markdown(
     "**1단계:** 올웨이즈 및 샤모아 발주서를 업로드하여 분석·매칭하고 각 공급처별 발주서 파일로 변환 다운로드<br>"
     "**2단계:** 누적된 거래 데이터를 바탕으로 종합 매출 및 순이익 분석 대시보드 확인",
@@ -53,19 +53,40 @@ with tab1:
         "각 공급처로 보낼 수 있는 최종 발주 파일들을 생성해 드립니다."
     )
 
+    # 모바일 기기(아이폰/안드로이드)에서 파일 확장자 인식 오류를 막기 위해 타입 제한 완화 및 범용 설정
     col_up1, col_up2 = st.columns(2)
     with col_up1:
-        up_always = st.file_uploader("1. 올웨이즈 발주서 업로드 (엑셀)", type=["xlsx", "xls"], key="up_alw")
+        up_always = st.file_uploader(
+            "1. 올웨이즈 발주서 업로드 (엑셀)", 
+            type=["xlsx", "xls", "csv", "txt"], 
+            key="up_alw"
+        )
     with col_up2:
-        up_chamoe = st.file_uploader("2. 샤모아 발주서 업로드 (엑셀)", type=["xlsx", "xls"], key="up_chm")
+        up_chamoe = st.file_uploader(
+            "2. 샤모아 발주서 업로드 (엑셀)", 
+            type=["xlsx", "xls", "csv", "txt"], 
+            key="up_chm"
+        )
 
     if st.button("🔄 발주서 분석 및 공급처별 파일 변환하기"):
         if not up_always:
             st.warning("올웨이즈 발주서를 반드시 업로드해 주세요!")
         else:
             try:
-                df_alw = pd.read_excel(up_always)
-                df_chm = pd.read_excel(up_chamoe) if up_chamoe else pd.DataFrame()
+                # 파일 확장자에 따른 읽기 분기 (엑셀 또는 CSV 지원)
+                filename = up_always.name.lower()
+                if filename.endswith('.csv'):
+                    df_alw = pd.read_csv(up_always)
+                else:
+                    df_alw = pd.read_excel(up_always)
+
+                df_chm = pd.DataFrame()
+                if up_chamoe:
+                    chm_name = up_chamoe.name.lower()
+                    if chm_name.endswith('.csv'):
+                        df_chm = pd.read_csv(up_chamoe)
+                    else:
+                        df_chm = pd.read_excel(up_chamoe)
 
                 zip_buffer = io.BytesIO()
 
@@ -73,13 +94,13 @@ with tab1:
                     # 상품명/품목 컬럼 자동 탐색
                     prod_col = None
                     for col in df_alw.columns:
-                        if any(k in col for k in ["상품명", "품명", "옵션", "상품"]):
+                        if any(k in str(col) for k in ["상품명", "품명", "옵션", "상품"]):
                             prod_col = col
                             break
 
                     # 1. 키스틱 공급처용 발주서 분할
                     if prod_col:
-                        df_kistic = df_alw[df_alw[prod_col].astype(str).str.contains("키ส틱|어묵", na=False)]
+                        df_kistic = df_alw[df_alw[prod_col].astype(str).str.contains("키스틱|어묵", na=False)]
                         if not df_kistic.empty:
                             b_kis = io.BytesIO()
                             df_kistic.to_excel(b_kis, index=False, engine="openpyxl")
