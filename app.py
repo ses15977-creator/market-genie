@@ -1,9 +1,6 @@
-```python
 import datetime
-import io
 import os
 import tempfile
-import zipfile
 import pandas as pd
 import streamlit as st
 
@@ -75,7 +72,7 @@ def save_history(new_df):
     new_df.to_csv(DB_FILE, index=False, encoding="utf-8-sig")
 
 
-# 파일 업로드 섹션 (모바일 호환성을 위해 확장자 허용 범위 넓힘)
+# 파일 업로드 섹션 (모바일 호환성 강화)
 col_up1, col_up2 = st.columns(2)
 with col_up1:
   st.subheader("🛒 샵모아 주문 파일")
@@ -96,42 +93,6 @@ selected_order_date = st.date_input(
 )
 order_date_str = selected_order_date.strftime("%Y-%m-%d")
 
-
-# 모바일 및 웹 호환 안전한 파일 읽기 함수 (임시 파일 생성 방식)
-def read_uploaded_file(uploaded_file):
-  if uploaded_file is None:
-    return None
-
-  file_ext = uploaded_file.name.split(".")[-1].lower()
-
-  # 임시 파일을 생성하여 모바일 스트림 유실 문제 방지
-  with tempfile.NamedTemporaryFile(
-      delete=False, suffix=f".{file_ext}"
-  ) as tmp_file:
-    tmp_file.write(uploaded_file.getvalue())
-    tmp_path = tmp_file.name
-
-  try:
-    if file_ext == "csv":
-      # 인코딩 문제 방어 (utf-8 시도 후 cp949 시도)
-      try:
-        df = pd.read_csv(tmp_path, encoding="utf-8")
-      except UnicodeDecodeError:
-        df = pd.read_csv(tmp_path, encoding="cp949")
-    else:
-      df = pd.read_excel(tmp_path)
-    return df
-  except Exception as e:
-    st.error(f"파일('{uploaded_file.name}') 읽기 실패: {e}")
-    return None
-  finally:
-    if os.path.exists(tmp_path):
-      try:
-        os.remove(tmp_path)
-      except:
-        pass
-
-
 if st.button("🚀 발주서 변환 및 마켓 정산 분석 시작"):
   if shopmoa_file is None and always_file is None:
     st.warning("엑셀 파일을 최소한 하나 이상 업로드해 주세요!")
@@ -139,10 +100,23 @@ if st.button("🚀 발주서 변환 및 마켓 정산 분석 시작"):
     all_rows = []
     read_success = True
 
-    # 1. 샵모아 파일 읽기
-    if shopmoa_file:
-      df_shop = read_uploaded_file(shopmoa_file)
-      if df_shop is not None:
+    try:
+      # 1. 샵모아 파일 읽기 (모바일 임시 파일 처리 방식)
+      if shopmoa_file:
+        with tempfile.NamedTemporaryFile(
+            delete=False, suffix=".xlsx"
+        ) as tmp_file:
+          tmp_file.write(shopmoa_file.getvalue())
+          tmp_path = tmp_file.name
+
+        try:
+          df_shop = pd.read_excel(tmp_path)
+        except Exception:
+          df_shop = pd.read_csv(tmp_path)
+        finally:
+          if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
         for _, row in df_shop.iterrows():
           site_name = "샵모아"
           for col in ["사이트", "판매처", "쇼핑몰", "마켓명"]:
@@ -165,13 +139,23 @@ if st.button("🚀 발주서 변환 및 마켓 정산 분석 시작"):
               "배송메모": str(row.get("배송메세지", "")),
               "판매처": site_name,
           })
-      else:
-        read_success = False
 
-    # 2. 올웨이즈 파일 읽기
-    if always_file and read_success:
-      df_alw = read_uploaded_file(always_file)
-      if df_alw is not None:
+      # 2. 올웨이즈 파일 읽기 (모바일 임시 파일 처리 방식)
+      if always_file:
+        with tempfile.NamedTemporaryFile(
+            delete=False, suffix=".xlsx"
+        ) as tmp_file:
+          tmp_file.write(always_file.getvalue())
+          tmp_path = tmp_file.name
+
+        try:
+          df_alw = pd.read_excel(tmp_path)
+        except Exception:
+          df_alw = pd.read_csv(tmp_path)
+        finally:
+          if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
         for _, row in df_alw.iterrows():
           all_rows.append({
               "주문번호": str(row.get("주문아이디", "")),
@@ -188,12 +172,16 @@ if st.button("🚀 발주서 변환 및 마켓 정산 분석 시작"):
               "배송메모": "",
               "판매처": "올웨이즈",
           })
-      else:
-        read_success = False
+
+    except Exception as e:
+      read_success = False
+      st.error(
+          f"파일을 읽는 도중 오류가 발생했습니다. 파일 형식을 확인해주세요. (상세"
+          f" 에러: {e})"
+      )
 
     if read_success and all_rows:
       master_df = pd.DataFrame(all_rows)
-
       current_batch_financial = []
 
       for _, r in master_df.iterrows():
@@ -202,9 +190,7 @@ if st.button("🚀 발주서 변환 및 마켓 정산 분석 시작"):
         orig_qty = r["수량"]
         platform = r["판매처"]
 
-        # ----------------------------------------------------
-        # 1. 키스틱 처리 (고정 판매가 및 원가)
-        # ----------------------------------------------------
+        # 키스틱 처리
         if "키스틱" in check_text:
           sets_100 = orig_qty // 2
           rem_40 = orig_qty % 2
@@ -237,9 +223,7 @@ if st.button("🚀 발주서 변환 및 마켓 정산 분석 시작"):
                 "배송비": deliv_per_unit,
             })
 
-        # ----------------------------------------------------
-        # 2. 어묵바 처리 (가람식품)
-        # ----------------------------------------------------
+        # 어묵바 처리 (가람식품)
         elif "어묵" in check_text:
           norm_name = "부산어묵 오리지날 어묵바 80g x 10개"
           single_cost_ex = 536
@@ -261,7 +245,7 @@ if st.button("🚀 발주서 변환 및 마켓 정산 분석 시작"):
           net_cost = single_cost_ex * 1.1
           deliv_per_unit = 4300
 
-          for i in range(1, orig_qty + 1):
+          for _ in range(orig_qty):
             current_batch_financial.append({
                 "날짜": order_date_str,
                 "판매처": platform,
@@ -272,9 +256,7 @@ if st.button("🚀 발주서 변환 및 마켓 정산 분석 시작"):
                 "배송비": deliv_per_unit,
             })
 
-        # ----------------------------------------------------
-        # 3. 냉동 품목 (고추잡채만두 등)
-        # ----------------------------------------------------
+        # 냉동 품목
         else:
           norm_frozen_name = p_name
           single_cost = 0
@@ -373,47 +355,4 @@ if not history_df.empty:
     selected_month = st.selectbox("조회할 월 선택", months_list)
     filtered_df = history_df[history_df["년월"] == selected_month]
   else:
-    dates_list = sorted(
-        history_df["날짜"].dt.strftime("%Y-%m-%d").unique(), reverse=True
-    )
-    selected_date = st.selectbox("조회할 일자 선택", dates_list)
-    filtered_df = history_df[
-        history_df["날짜"].dt.strftime("%Y-%m-%d") == selected_date
-    ]
-
-  if not filtered_df.empty:
-    f_summary = (
-        filtered_df.groupby("판매처")
-        .agg(
-            판매건수=("매출액", "count"),
-            총매출액=("매출액", "sum"),
-            총원가=("원가", "sum"),
-            총배송비=("배송비", "sum"),
-            총수수료=("수수료", "sum"),
-            총순이익=("순이익", "sum"),
-        )
-        .reset_index()
-    )
-
-    f_summary["이익률(%)"] = f_summary.apply(
-        lambda row: (row["총순이익"] / row["총매출액"] * 100)
-        if row["총매출액"] > 0
-        else 0.0,
-        axis=1,
-    )
-
-    disp_sum = f_summary.copy()
-    disp_sum["총매출액"] = disp_sum["총매출액"].apply(lambda x: f"{int(x):,}원")
-    disp_sum["총원가"] = disp_sum["총원가"].apply(lambda x: f"{int(x):,}원")
-    disp_sum["총배송비"] = disp_sum["총배송비"].apply(lambda x: f"{int(x):,}원")
-    disp_sum["총수수료"] = disp_sum["총수수료"].apply(lambda x: f"{int(x):,}원")
-    disp_sum["총순이익"] = disp_sum["총순이익"].apply(lambda x: f"{int(x):,}원")
-    disp_sum["이익률(%)"] = disp_sum["이익률(%)"].apply(lambda x: f"{x:.2f}%")
-
-    st.dataframe(disp_sum, use_container_width=True)
-  else:
-    st.info("선택한 조건에 해당하는 데이터가 없습니다.")
-
-else:
-  st.info("💡 아직 누적된 데이터가 없습니다. 상단에서 주문 엑셀 파일을 업로드해 주세요.")
-```
+    dates_
