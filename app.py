@@ -31,8 +31,8 @@ st.markdown(
 
 st.title("🌟 마켓지니 마켓관리 프로그램")
 st.markdown(
-    "**샵모아** 및 **올웨이즈** 주문 파일을 업로드하면, 지정된 고정 판매가와 원가로"
-    " **매출·순이익·수수료**를 계산하고 일자/월별로 자동 누적 관리합니다!"
+    "**샵모아** 및 **올웨이즈** 주문 파일을 업로드하면, 플랫폼별(쿠팡, 스마트스토어,"
+    " 11번가 등)로 매출·순이익을 자동 정산하고 발주서를 생성합니다!"
 )
 st.markdown("---")
 
@@ -69,7 +69,6 @@ def load_history():
 def save_history_deduplicated(new_df, target_date):
   existing_df = load_history()
   if not existing_df.empty:
-    # 기존 데이터 중 선택한 날짜와 동일한 데이터는 제외하고 새로운 데이터로 교체 (중복 방지)
     existing_df["날짜"] = existing_df["날짜"].astype(str)
     other_dates_df = existing_df[existing_df["날짜"] != target_date]
     combined = pd.concat([other_dates_df, new_df], ignore_index=True)
@@ -130,29 +129,74 @@ if st.button("🚀 발주서 변환 및 마켓 정산 분석 시작"):
             os.remove(tmp_path)
 
         for _, row in df_shop.iterrows():
-          site_name = "샵모아"
-          for col in ["사이트", "판매처", "쇼핑몰", "마켓명"]:
+          # 엑셀 안에서 개별 플랫폼(쿠팡, 스마트스토어, 11번가 등) 인식
+          site_name = "샵모아기타"
+          for col in [
+              "사이트",
+              "판매처",
+              "쇼핑몰",
+              "마켓명",
+              "판매채널",
+              "주문매체",
+          ]:
             if col in df_shop.columns and pd.notna(row.get(col)):
-              site_name = str(row.get(col))
-              break
+              val = str(row.get(col)).strip()
+              if val:
+                site_name = val
+                break
+
+          # 상품명과 옵션을 결합하여 정확한 판단 기준 확보
+          p_name = str(row.get("상품명", ""))
+          opt_name = (
+              str(row.get("옵션명", "")) if "옵션명" in df_shop.columns else ""
+          )
+          combined_text = f"{p_name} {opt_name}"
 
           all_rows.append({
-              "주문번호": str(row.get("주문번호", "")),
-              "판단기준텍스트": str(row.get("상품명", "")),
-              "상품명": str(row.get("상품명", "")),
+              "주문번호": str(
+                  row.get(
+                      "주문번호", row.get("주문 번호", row.get("주문아이디", ""))
+                  )
+              ),
+              "판단기준텍스트": combined_text,
+              "상품명": p_name,
               "수량": int(row.get("수량", 1))
               if pd.notna(row.get("수량"))
               else 1,
-              "수취인명": str(row.get("수취인명", "")),
-              "전화번호": str(row.get("수취인 전화번호", "")),
-              "휴대폰번호": str(row.get("수취인 핸드폰번호", "")),
-              "주소": str(row.get("수취인주소", "")),
-              "우편번호": str(row.get("우편번호", "")),
-              "배송메모": str(row.get("배송메세지", "")),
+              "수취인명": str(
+                  row.get(
+                      "수취인명", row.get("수령인", row.get("받는분성명", ""))
+                  )
+              ),
+              "전화번호": str(
+                  row.get(
+                      "수취인 전화번호",
+                      row.get("수령인 연락처", row.get("전화번호", "")),
+                  )
+              ),
+              "휴대폰번호": str(
+                  row.get(
+                      "수취인 핸드폰번호", row.get("휴대폰번호", "")
+                  )
+              ),
+              "주소": str(
+                  row.get(
+                      "수취인주소", row.get("주소", row.get("받는분주소", ""))
+                  )
+              ),
+              "우편번호": str(
+                  row.get("우편번호", row.get("받는분우편번호", ""))
+              ),
+              "배송메모": str(
+                  row.get(
+                      "배송메세지",
+                      row.get("배송메모", row.get("배송메세지1", "")),
+                  )
+              ),
               "판매처": site_name,
           })
 
-      # 2. 올웨이즈 파일 읽기 처리
+      # 2. 올웨이즈 파일 읽기 처리 (옵션 기준 철저 분기)
       if always_file:
         file_name_alw = always_file.name.lower()
         with tempfile.NamedTemporaryFile(
@@ -175,20 +219,38 @@ if st.button("🚀 발주서 변환 및 마켓 정산 분석 시작"):
             os.remove(tmp_path)
 
         for _, row in df_alw.iterrows():
+          p_name = str(row.get("상품명", ""))
+          opt_name = str(
+              row.get("옵션", row.get("옵션명", row.get("상품옵션", "")))
+          )
+          combined_text = f"{p_name} {opt_name}"
+
           all_rows.append({
-              "주문번호": str(row.get("주문아이디", "")),
-              "판단기준텍스트": str(row.get("옵션", "")),
-              "상품명": str(row.get("상품명", "")),
+              "주문번호": str(
+                  row.get(
+                      "주문아이디", row.get("주문번호", row.get("주문 번호", ""))
+                  )
+              ),
+              "판단기준텍스트": combined_text,  # 올웨이즈는 특히 옵션명이 핵심
+              "상품명": p_name,
               "수량": int(row.get("수량", 1))
               if pd.notna(row.get("수량"))
               else 1,
-              "수취인명": str(row.get("수령인", "")),
-              "전화번호": str(row.get("수령인 연락처", "")),
+              "수취인명": str(
+                  row.get("수령인", row.get("수취인명", row.get("받는분", "")))
+              ),
+              "전화번호": str(
+                  row.get("수령인 연락처", row.get("연락처", ""))
+              ),
               "휴대폰번호": "",
-              "주소": str(row.get("주소", "")),
+              "주소": str(row.get("주소", row.get("수취인주소", ""))),
               "우편번호": str(row.get("우편번호", "")),
-              "배송메모": "",
-              "판매처": "올웨이즈",
+              "배송메모": str(
+                  row.get(
+                      "배송메모", row.get("배송메세지", row.get("고객요청사항", ""))
+                  )
+              ),
+              "판매처": "올웨이즈",  # 올웨이즈 플랫폼 명시
           })
 
     except Exception as e:
@@ -207,15 +269,15 @@ if st.button("🚀 발주서 변환 및 마켓 정산 분석 시작"):
       current_batch_financial = []
 
       for _, r in master_df.iterrows():
-        check_text = r["판단기준텍스트"]
-        p_name = r["상품명"]
-        orig_qty = r["수량"]
-        base_name = r["수취인명"]
-        platform = r["판매처"]
-        order_num = r["주문번호"]
+        check_text = str(r["판단기준텍스트"])
+        p_name = str(r["상품명"])
+        orig_qty = int(r["수량"])
+        base_name = str(r["수취인명"])
+        platform = str(r["판매처"])
+        order_num = str(r["주문번호"])
 
-        # 1. 키스틱 처리
-        if "키스틱" in check_text:
+        # 1. 키스틱 상품 판별
+        if "키스틱" in check_text or "기스틱" in check_text:
           sets_100 = orig_qty // 2
           rem_40 = orig_qty % 2
 
@@ -271,8 +333,8 @@ if st.button("🚀 발주서 변환 및 마켓 정산 분석 시작"):
                 "주문번호": order_num,
             })
 
-        # 2. 어묵바 처리 (가람식품)
-        elif "어묵" in check_text:
+        # 2. 어묵바 상품 판별 (가람식품)
+        elif "어묵" in check_text or "어묵바" in check_text:
           norm_name = "부산어묵 오리지날 어묵바 80g x 10개"
           single_cost_ex = 536
           fixed_price = 18900
@@ -318,7 +380,7 @@ if st.button("🚀 발주서 변환 및 마켓 정산 분석 시작"):
                 "주문번호": order_num,
             })
 
-        # 3. 냉동 품목
+        # 3. 냉동 품목 판별 (고추잡채만두, 김말이 등)
         else:
           norm_frozen_name = p_name
           single_cost = 0
@@ -369,6 +431,7 @@ if st.button("🚀 발주서 변환 및 마켓 정산 분석 시작"):
         def get_comm(row):
           p = str(row["판매처"])
           rev = row["매출액"]
+          # 올웨이즈는 7%, 기타 플랫폼(쿠팡, 스마트스토어 등)은 5.5% 적용
           if "올웨이즈" in p:
             return rev * 0.07
           else:
@@ -384,7 +447,7 @@ if st.button("🚀 발주서 변환 및 마켓 정산 분석 시작"):
         save_history_deduplicated(df_current_batch, order_date_str)
 
       st.success(
-          f"✅ [{order_date_str}] 자정산 데이터 분석 및 중복 없이 반영 완료!"
+          f"✅ [{order_date_str}] 데이터 분석 및 플랫폼별 정산 반영 완료!"
       )
 
       # 송장(발주서) ZIP 파일 생성 다운로드 버튼 제공 (파일 이름에 날짜 포함)
@@ -412,10 +475,10 @@ if st.button("🚀 발주서 변환 및 마켓 정산 분석 시작"):
       )
 
 # ----------------------------------------------------
-# 📊 상단 대시보드 및 누적 데이터 조회 섹션
+# 📊 상단 대시보드 및 플랫폼별 누적 데이터 조회 섹션
 # ----------------------------------------------------
 st.markdown("---")
-st.header("📈 마켓지니 종합 매출 & 순이익 대시보드")
+st.header("📈 마켓지니 플랫폼별 종합 매출 & 순이익 대시보드")
 
 history_df = load_history()
 
@@ -446,7 +509,7 @@ if not history_df.empty:
     )
 
   st.markdown("---")
-  st.subheader("🔍 일자별 / 월별 누적 데이터 검색 및 필터")
+  st.subheader("🔍 일자별 / 월별 플랫폼별 상세 현황")
 
   f_col1, f_col2 = st.columns(2)
   with f_col1:
@@ -466,6 +529,7 @@ if not history_df.empty:
     ]
 
   if not filtered_df.empty:
+    # 판매처(쿠팡, 스마트스토어, 올웨이즈 등)별 그룹화 집계
     f_summary = (
         filtered_df.groupby("판매처")
         .agg(
