@@ -53,18 +53,18 @@ with tab1:
         "각 공급처로 보낼 수 있는 최종 발주 파일들을 생성해 드립니다."
     )
 
-    # 모바일 기기(아이폰/안드로이드)에서 파일 확장자 인식 오류를 막기 위해 타입 제한 완화 및 범용 설정
+    # 모바일 기기(아이폰/안드로이드)에서 파일 선택 창이 막히지 않도록 type=None으로 완전 개방
     col_up1, col_up2 = st.columns(2)
     with col_up1:
         up_always = st.file_uploader(
-            "1. 올웨이즈 발주서 업로드 (엑셀)", 
-            type=["xlsx", "xls", "csv", "txt"], 
+            "1. 올웨이즈 발주서 업로드 (엑셀 또는 파일)", 
+            type=None, 
             key="up_alw"
         )
     with col_up2:
         up_chamoe = st.file_uploader(
-            "2. 샤모아 발주서 업로드 (엑셀)", 
-            type=["xlsx", "xls", "csv", "txt"], 
+            "2. 샤모아 발주서 업로드 (엑셀 또는 파일)", 
+            type=None, 
             key="up_chm"
         )
 
@@ -73,12 +73,15 @@ with tab1:
             st.warning("올웨이즈 발주서를 반드시 업로드해 주세요!")
         else:
             try:
-                # 파일 확장자에 따른 읽기 분기 (엑셀 또는 CSV 지원)
+                # 업로드된 파일의 확장자나 이름에 따라 안전하게 읽어오기
                 filename = up_always.name.lower()
                 if filename.endswith('.csv'):
                     df_alw = pd.read_csv(up_always)
                 else:
-                    df_alw = pd.read_excel(up_always)
+                    try:
+                        df_alw = pd.read_excel(up_always, engine='openpyxl')
+                    except:
+                        df_alw = pd.read_excel(up_always) # 기본 엔진 시도
 
                 df_chm = pd.DataFrame()
                 if up_chamoe:
@@ -86,7 +89,10 @@ with tab1:
                     if chm_name.endswith('.csv'):
                         df_chm = pd.read_csv(up_chamoe)
                     else:
-                        df_chm = pd.read_excel(up_chamoe)
+                        try:
+                            df_chm = pd.read_excel(up_chamoe, engine='openpyxl')
+                        except:
+                            df_chm = pd.read_excel(up_chamoe)
 
                 zip_buffer = io.BytesIO()
 
