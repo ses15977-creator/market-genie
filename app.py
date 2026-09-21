@@ -1,6 +1,8 @@
 import datetime
+import io
 import os
 import tempfile
+import zipfile
 import pandas as pd
 import streamlit as st
 
@@ -51,6 +53,7 @@ def load_history():
       columns=[
           "날짜",
           "판매처",
+          "주문번호",
           "상품명",
           "수량",
           "매출액",
@@ -62,17 +65,20 @@ def load_history():
   )
 
 
-# 누적 데이터 저장 함수
-def save_history(new_df):
+# 누적 데이터 저장 함수 (선택한 날짜 기준으로 중복 제거 후 저장)
+def save_history_deduplicated(new_df, target_date):
   existing_df = load_history()
-  if not existing_df.empty and not new_df.empty:
-    combined = pd.concat([existing_df, new_df], ignore_index=True)
+  if not existing_df.empty:
+    # 기존 데이터 중 선택한 날짜와 동일한 데이터는 제외하고 새로운 데이터로 교체 (중복 방지)
+    existing_df["날짜"] = existing_df["날짜"].astype(str)
+    other_dates_df = existing_df[existing_df["날짜"] != target_date]
+    combined = pd.concat([other_dates_df, new_df], ignore_index=True)
     combined.to_csv(DB_FILE, index=False, encoding="utf-8-sig")
-  elif not new_df.empty:
+  else:
     new_df.to_csv(DB_FILE, index=False, encoding="utf-8-sig")
 
 
-# 파일 업로드 섹션 (모바일 호환성을 위해 type 제한을 완전히 제거)
+# 파일 업로드 섹션 (모바일 호환성 강화: type 제한 해제)
 col_up1, col_up2 = st.columns(2)
 with col_up1:
   st.subheader("🛒 샵모아 주문 파일")
@@ -194,15 +200,21 @@ if st.button("🚀 발주서 변환 및 마켓 정산 분석 시작"):
 
     if read_success and all_rows:
       master_df = pd.DataFrame(all_rows)
+
+      냉동_rows = []
+      키스틱_rows = []
+      가람식품_rows = []
       current_batch_financial = []
 
       for _, r in master_df.iterrows():
         check_text = r["판단기준텍스트"]
         p_name = r["상품명"]
         orig_qty = r["수량"]
+        base_name = r["수취인명"]
         platform = r["판매처"]
+        order_num = r["주문번호"]
 
-        # 키스틱 처리
+        # 1. 키스틱 처리
         if "키스틱" in check_text:
           sets_100 = orig_qty // 2
           rem_40 = orig_qty % 2
@@ -217,25 +229,49 @@ if st.button("🚀 발주서 변환 및 마켓 정산 분석 시작"):
             current_batch_financial.append({
                 "날짜": order_date_str,
                 "판매처": platform,
+                "주문번호": order_num,
                 "상품명": "키스틱 100개입",
                 "수량": 1,
                 "매출액": price_100,
                 "원가": cost_100,
                 "배송비": deliv_per_unit,
             })
+            키스틱_rows.append({
+                "수령자이름": base_name,
+                "수령자전화": r["전화번호"],
+                "수령자휴대폰": r["휴대폰번호"],
+                "수령자우편번호": r["우편번호"],
+                "수령자주소": r["주소"],
+                1: 1,
+                "배송메모": r["배송메모"],
+                "상품명": "키스틱 15g x 100개",
+                "주문번호": order_num,
+            })
 
           for _ in range(rem_40):
             current_batch_financial.append({
                 "날짜": order_date_str,
                 "판매처": platform,
+                "주문번호": order_num,
                 "상품명": "키스틱 40개입",
                 "수량": 1,
                 "매출액": price_40,
                 "원가": cost_40,
                 "배송비": deliv_per_unit,
             })
+            키스틱_rows.append({
+                "수령자이름": base_name,
+                "수령자전화": r["전화번호"],
+                "수령자휴대폰": r["휴대폰번호"],
+                "수령자우편번호": r["우편번호"],
+                "수령자주소": r["주소"],
+                1: 1,
+                "배송메모": r["배송메모"],
+                "상품명": "키스틱 15g x 40개",
+                "주문번호": order_num,
+            })
 
-        # 어묵바 처리 (가람식품)
+        # 2. 어묵바 처리 (가람식품)
         elif "어묵" in check_text:
           norm_name = "부산어묵 오리지날 어묵바 80g x 10개"
           single_cost_ex = 536
@@ -257,18 +293,32 @@ if st.button("🚀 발주서 변환 및 마켓 정산 분석 시작"):
           net_cost = single_cost_ex * 1.1
           deliv_per_unit = 4300
 
-          for _ in range(orig_qty):
+          for i in range(1, orig_qty + 1):
             current_batch_financial.append({
                 "날짜": order_date_str,
                 "판매처": platform,
+                "주문번호": order_num,
                 "상품명": norm_name,
                 "수량": 1,
                 "매출액": fixed_price,
                 "원가": net_cost,
                 "배송비": deliv_per_unit,
             })
+            split_name = f"{base_name}{i}" if orig_qty > 1 else base_name
+            가람식품_rows.append({
+                "받는분성명": split_name,
+                "받는분전화번호": r["전화번호"]
+                if r["전화번호"]
+                else r["휴대폰번호"],
+                "받는분우편번호": r["우편번호"],
+                "받는분주소": r["주소"],
+                "내품수량": 1,
+                "배송메세지1": r["배송메모"],
+                "품명": norm_name,
+                "주문번호": order_num,
+            })
 
-        # 냉동 품목
+        # 3. 냉동 품목
         else:
           norm_frozen_name = p_name
           single_cost = 0
@@ -292,6 +342,7 @@ if st.button("🚀 발주서 변환 및 마켓 정산 분석 시작"):
             current_batch_financial.append({
                 "날짜": order_date_str,
                 "판매처": platform,
+                "주문번호": order_num,
                 "상품명": norm_frozen_name,
                 "수량": 1,
                 "매출액": fixed_price,
@@ -299,6 +350,19 @@ if st.button("🚀 발주서 변환 및 마켓 정산 분석 시작"):
                 "배송비": deliv_per_unit,
             })
 
+          냉동_rows.append({
+              "수령자이름": base_name,
+              "수령자전화": r["전화번호"],
+              "수령자휴대폰": r["휴대폰번호"],
+              "수령자우편번호": r["우편번호"],
+              "수령자주소": r["주소"],
+              "상품수량": orig_qty,
+              "배송메모": r["배송메모"],
+              "상품명": norm_frozen_name,
+              "주문번호": order_num,
+          })
+
+      # 재무 데이터 계산 및 중복 방지 저장
       df_current_batch = pd.DataFrame(current_batch_financial)
       if not df_current_batch.empty:
 
@@ -317,9 +381,35 @@ if st.button("🚀 발주서 변환 및 마켓 정산 분석 시작"):
             - df_current_batch["배송비"]
             - df_current_batch["수수료"]
         )
-        save_history(df_current_batch)
+        save_history_deduplicated(df_current_batch, order_date_str)
 
-      st.success("✅ 업로드 파일 정산 및 누적 데이터 저장 완료!")
+      st.success(
+          f"✅ [{order_date_str}] 자정산 데이터 분석 및 중복 없이 반영 완료!"
+      )
+
+      # 송장(발주서) ZIP 파일 생성 다운로드 버튼 제공 (파일 이름에 날짜 포함)
+      zip_buffer = io.BytesIO()
+      with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        if 키스틱_rows:
+          df_k = pd.DataFrame(키스틱_rows)
+          csv_k = df_k.to_csv(index=False, encoding="utf-8-sig")
+          zf.writestr(f"키스틱_발주서_{order_date_str}.csv", csv_k)
+        if 가람식품_rows:
+          df_g = pd.DataFrame(가람식품_rows)
+          csv_g = df_g.to_csv(index=False, encoding="utf-8-sig")
+          zf.writestr(f"가람식품_어묵바_발주서_{order_date_str}.csv", csv_g)
+        if 냉동_rows:
+          df_n = pd.DataFrame(냉동_rows)
+          csv_n = df_n.to_csv(index=False, encoding="utf-8-sig")
+          zf.writestr(f"냉동식품_발주서_{order_date_str}.csv", csv_n)
+
+      zip_buffer.seek(0)
+      st.download_button(
+          label=f"📦 [{order_date_str}] 품목별 발주서 ZIP 다운로드",
+          data=zip_buffer,
+          file_name=f"발주서_{order_date_str}.zip",
+          mime="application/zip",
+      )
 
 # ----------------------------------------------------
 # 📊 상단 대시보드 및 누적 데이터 조회 섹션
