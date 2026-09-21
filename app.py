@@ -31,8 +31,8 @@ st.markdown(
 
 st.title("🌟 마켓지니 마켓관리 프로그램")
 st.markdown(
-    "**샵모아** 및 **올웨이즈** 주문 파일을 업로드하면, 플랫폼별(쿠팡, 스마트스토어,"
-    " 11번가 등)로 매출·순이익을 자동 정산하고 발주서를 생성합니다!"
+    "**주문 엑셀 원본 파일**을 업로드하면, 파일 안의 플랫폼 정보(쿠팡, 스마트스토어,"
+    " 11번가 등)와 옵션을 정확히 분석하여 매출·순이익을 자동 정산합니다!"
 )
 st.markdown("---")
 
@@ -80,15 +80,11 @@ def save_history_deduplicated(new_df, target_date):
 # 파일 업로드 섹션 (모바일 호환성 강화: type 제한 해제)
 col_up1, col_up2 = st.columns(2)
 with col_up1:
-  st.subheader("🛒 샵모아 주문 파일")
-  shopmoa_file = st.file_uploader(
-      "샵모아 파일 업로드 (엑셀/CSV)", key="shop"
-  )
+  st.subheader("🛒 첫 번째 주문 파일 (샵모아 등)")
+  file_1 = st.file_uploader("주문 파일 1 업로드 (엑셀/CSV)", key="file1")
 with col_up2:
-  st.subheader("🚀 올웨이즈 주문 파일")
-  always_file = st.file_uploader(
-      "올웨이즈 파일 업로드 (엑셀/CSV)", key="always"
-  )
+  st.subheader("🚀 두 번째 주문 파일 (올웨이즈 등)")
+  file_2 = st.file_uploader("주문 파일 2 업로드 (엑셀/CSV)", key="file2")
 
 # 오늘 날짜 (기본 세팅용)
 today_date_str = datetime.datetime.now().strftime("%Y-%m-%d")
@@ -98,159 +94,148 @@ selected_order_date = st.date_input(
 )
 order_date_str = selected_order_date.strftime("%Y-%m-%d")
 
-if st.button("🚀 발주서 변환 및 마켓 정산 분석 시작"):
-  if shopmoa_file is None and always_file is None:
+if st.button("🚀 발주서 변환 및 플랫폼별 정산 분석 시작"):
+  if file_1 is None and file_2 is None:
     st.warning("주문 파일을 최소한 하나 이상 업로드해 주세요!")
   else:
     all_rows = []
     read_success = True
 
+    uploaded_files = [f for f in [file_1, file_2] if f is not None]
+
     try:
-      # 1. 샵모아 파일 읽기 처리
-      if shopmoa_file:
-        file_name = shopmoa_file.name.lower()
+      for uploaded_file in uploaded_files:
+        file_name = uploaded_file.name.lower()
         with tempfile.NamedTemporaryFile(
             delete=False,
             suffix=".csv" if "csv" in file_name else ".xlsx",
         ) as tmp_file:
-          tmp_file.write(shopmoa_file.getvalue())
+          tmp_file.write(uploaded_file.getvalue())
           tmp_path = tmp_file.name
 
         try:
           if "csv" in file_name:
-            df_shop = pd.read_csv(tmp_path)
+            df_temp = pd.read_csv(tmp_path)
           else:
             try:
-              df_shop = pd.read_excel(tmp_path)
+              df_temp = pd.read_excel(tmp_path)
             except Exception:
-              df_shop = pd.read_csv(tmp_path)
+              df_temp = pd.read_csv(tmp_path)
         finally:
           if os.path.exists(tmp_path):
             os.remove(tmp_path)
 
-        for _, row in df_shop.iterrows():
-          # 엑셀 안에서 개별 플랫폼(쿠팡, 스마트스토어, 11번가 등) 인식
-          site_name = "샵모아기타"
-          for col in [
-              "사이트",
-              "판매처",
-              "쇼핑몰",
-              "마켓명",
-              "판매채널",
-              "주문매체",
-          ]:
-            if col in df_shop.columns and pd.notna(row.get(col)):
-              val = str(row.get(col)).strip()
-              if val:
-                site_name = val
-                break
+        # 엑셀 행을 돌며 원본 데이터 안의 실제 판매처(플랫폼) 찾아내기
+        for _, row in df_temp.iterrows():
+          # 올웨이즈 파일인 경우 명시적으로 "올웨이즈" 지정
+          if (
+              "올웨이즈" in file_name
+              or "alwayse" in file_name
+              or "주문아이디" in df_temp.columns
+          ):
+            site_name = "올웨이즈"
+          else:
+            # 샵모아 등 통합 파일 내에서 쿠팡, 스마트스토어, 11번가 등의 플랫폼 명칭 컬럼 탐색
+            site_name = "기타마켓"
+            for col in [
+                "사이트",
+                "판매처",
+                "쇼핑몰",
+                "마켓명",
+                "판매채널",
+                "주문매체",
+                "채널명",
+            ]:
+              if col in df_temp.columns and pd.notna(row.get(col)):
+                val = str(row.get(col)).strip()
+                if val:
+                  site_name = val
+                  break
 
-          # 상품명과 옵션을 결합하여 정확한 판단 기준 확보
+          # 상품명과 옵션명 조합하여 분석 기준 생성
           p_name = str(row.get("상품명", ""))
-          opt_name = (
-              str(row.get("옵션명", "")) if "옵션명" in df_shop.columns else ""
-          )
+          opt_cols = [
+              c for c in df_temp.columns if "옵션" in c or "상품옵션" in c
+          ]
+          opt_name = ""
+          for oc in opt_cols:
+            if pd.notna(row.get(oc)):
+              opt_name += str(row.get(oc)) + " "
+
           combined_text = f"{p_name} {opt_name}"
 
+          # 주문번호 컬럼 탐색
+          order_id = ""
+          for id_col in ["주문번호", "주문 번호", "주문아이디", "order_id"]:
+            if id_col in df_temp.columns and pd.notna(row.get(id_col)):
+              order_id = str(row.get(id_col))
+              break
+
+          # 수취인명 컬럼 탐색
+          receiver = ""
+          for rc_col in ["수취인명", "수령인", "받는분성명", "수취인"]:
+            if rc_col in df_temp.columns and pd.notna(row.get(rc_col)):
+              receiver = str(row.get(rc_col))
+              break
+
+          # 전화번호/휴대폰 컬럼 탐색
+          tel = ""
+          for tel_col in [
+              "수취인 전화번호",
+              "수령인 연락처",
+              "전화번호",
+              "연락처",
+              "수취인 핸드폰번호",
+          ]:
+            if tel_col in df_temp.columns and pd.notna(row.get(tel_col)):
+              tel = str(row.get(tel_col))
+              break
+
+          # 주소 컬럼 탐색
+          addr = ""
+          for ad_col in ["수취인주소", "주소", "받는분주소"]:
+            if ad_col in df_temp.columns and pd.notna(row.get(ad_col)):
+              addr = str(row.get(ad_col))
+              break
+
+          # 우편번호 컬럼 탐색
+          zip_code = ""
+          for zp_col in ["우편번호", "받는분우편번호"]:
+            if zp_col in df_temp.columns and pd.notna(row.get(zp_col)):
+              zip_code = str(row.get(zp_col))
+              break
+
+          # 배송메모 컬럼 탐색
+          memo = ""
+          for mm_col in [
+              "배송메세지",
+              "배송메모",
+              "배송메세지1",
+              "고객요청사항",
+          ]:
+            if mm_col in df_temp.columns and pd.notna(row.get(mm_col)):
+              memo = str(row.get(mm_col))
+              break
+
+          qty_val = 1
+          if "수량" in df_temp.columns and pd.notna(row.get("수량")):
+            try:
+              qty_val = int(float(row.get("수량")))
+            except:
+              qty_val = 1
+
           all_rows.append({
-              "주문번호": str(
-                  row.get(
-                      "주문번호", row.get("주문 번호", row.get("주문아이디", ""))
-                  )
-              ),
+              "주문번호": order_id,
               "판단기준텍스트": combined_text,
               "상품명": p_name,
-              "수량": int(row.get("수량", 1))
-              if pd.notna(row.get("수량"))
-              else 1,
-              "수취인명": str(
-                  row.get(
-                      "수취인명", row.get("수령인", row.get("받는분성명", ""))
-                  )
-              ),
-              "전화번호": str(
-                  row.get(
-                      "수취인 전화번호",
-                      row.get("수령인 연락처", row.get("전화번호", "")),
-                  )
-              ),
-              "휴대폰번호": str(
-                  row.get(
-                      "수취인 핸드폰번호", row.get("휴대폰번호", "")
-                  )
-              ),
-              "주소": str(
-                  row.get(
-                      "수취인주소", row.get("주소", row.get("받는분주소", ""))
-                  )
-              ),
-              "우편번호": str(
-                  row.get("우편번호", row.get("받는분우편번호", ""))
-              ),
-              "배송메모": str(
-                  row.get(
-                      "배송메세지",
-                      row.get("배송메모", row.get("배송메세지1", "")),
-                  )
-              ),
-              "판매처": site_name,
-          })
-
-      # 2. 올웨이즈 파일 읽기 처리 (옵션 기준 철저 분기)
-      if always_file:
-        file_name_alw = always_file.name.lower()
-        with tempfile.NamedTemporaryFile(
-            delete=False,
-            suffix=".csv" if "csv" in file_name_alw else ".xlsx",
-        ) as tmp_file:
-          tmp_file.write(always_file.getvalue())
-          tmp_path = tmp_file.name
-
-        try:
-          if "csv" in file_name_alw:
-            df_alw = pd.read_csv(tmp_path)
-          else:
-            try:
-              df_alw = pd.read_excel(tmp_path)
-            except Exception:
-              df_alw = pd.read_csv(tmp_path)
-        finally:
-          if os.path.exists(tmp_path):
-            os.remove(tmp_path)
-
-        for _, row in df_alw.iterrows():
-          p_name = str(row.get("상품명", ""))
-          opt_name = str(
-              row.get("옵션", row.get("옵션명", row.get("상품옵션", "")))
-          )
-          combined_text = f"{p_name} {opt_name}"
-
-          all_rows.append({
-              "주문번호": str(
-                  row.get(
-                      "주문아이디", row.get("주문번호", row.get("주문 번호", ""))
-                  )
-              ),
-              "판단기준텍스트": combined_text,  # 올웨이즈는 특히 옵션명이 핵심
-              "상품명": p_name,
-              "수량": int(row.get("수량", 1))
-              if pd.notna(row.get("수량"))
-              else 1,
-              "수취인명": str(
-                  row.get("수령인", row.get("수취인명", row.get("받는분", "")))
-              ),
-              "전화번호": str(
-                  row.get("수령인 연락처", row.get("연락처", ""))
-              ),
+              "수량": qty_val,
+              "수취인명": receiver,
+              "전화번호": tel,
               "휴대폰번호": "",
-              "주소": str(row.get("주소", row.get("수취인주소", ""))),
-              "우편번호": str(row.get("우편번호", "")),
-              "배송메모": str(
-                  row.get(
-                      "배송메모", row.get("배송메세지", row.get("고객요청사항", ""))
-                  )
-              ),
-              "판매처": "올웨이즈",  # 올웨이즈 플랫폼 명시
+              "주소": addr,
+              "우편번호": zip_code,
+              "배송메모": memo,
+              "판매처": site_name,  # 원본 파일에서 추출한 실제 플랫폼명 (쿠팡, 스마트스토어 등)
           })
 
     except Exception as e:
@@ -369,9 +354,7 @@ if st.button("🚀 발주서 변환 및 마켓 정산 분석 시작"):
             split_name = f"{base_name}{i}" if orig_qty > 1 else base_name
             가람식품_rows.append({
                 "받는분성명": split_name,
-                "받는분전화번호": r["전화번호"]
-                if r["전화번호"]
-                else r["휴대폰번호"],
+                "받는분전화번호": r["전화번호"],
                 "받는분우편번호": r["우편번호"],
                 "받는분주소": r["주소"],
                 "내품수량": 1,
@@ -431,7 +414,7 @@ if st.button("🚀 발주서 변환 및 마켓 정산 분석 시작"):
         def get_comm(row):
           p = str(row["판매처"])
           rev = row["매출액"]
-          # 올웨이즈는 7%, 기타 플랫폼(쿠팡, 스마트스토어 등)은 5.5% 적용
+          # 올웨이즈는 7%, 그 외 플랫폼(쿠팡, 스마트스토어 등)은 5.5% 적용
           if "올웨이즈" in p:
             return rev * 0.07
           else:
@@ -447,7 +430,8 @@ if st.button("🚀 발주서 변환 및 마켓 정산 분석 시작"):
         save_history_deduplicated(df_current_batch, order_date_str)
 
       st.success(
-          f"✅ [{order_date_str}] 데이터 분석 및 플랫폼별 정산 반영 완료!"
+          f"✅ [{order_date_str}] 파일 분석 완료! (플랫폼별 정산 및 중복 방지"
+          " 반영)"
       )
 
       # 송장(발주서) ZIP 파일 생성 다운로드 버튼 제공 (파일 이름에 날짜 포함)
@@ -529,7 +513,7 @@ if not history_df.empty:
     ]
 
   if not filtered_df.empty:
-    # 판매처(쿠팡, 스마트스토어, 올웨이즈 등)별 그룹화 집계
+    # 원본 파일에서 추출된 실제 판매처(쿠팡, 스마트스토어 등)별 그룹화 집계
     f_summary = (
         filtered_df.groupby("판매처")
         .agg(
