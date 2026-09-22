@@ -40,59 +40,112 @@ def process_custom_orders(shopmoa_df, always_df):
   # 샵모아 데이터 표준화
   if shopmoa_df is not None and not shopmoa_df.empty:
     s_df = shopmoa_df.copy()
-    s_df["원격_받는분성명"] = s_df.get("수취인명", "")
-    s_df["원격_받는분전화번호"] = s_df.get("수취인 전화번호", "")
-    s_df["원격_받는분기타연락처"] = s_df.get("수취인 핸드폰번호", "")
-    s_df["원격_받는분우편번호"] = s_df.get("우편번호", "")
-    s_df["원격_받는분주소"] = s_df.get("수취인주소", "")
-    s_df["상품명_원본"] = s_df.get("상품명", "")
-    s_df["옵션_원본"] = s_df.get("옵션", "")
-    s_df["상품수량"] = pd.to_numeric(s_df.get("수량", 1), errors="coerce").fillna(
-        1
+    s_df["원격_받는분성명"] = (
+        s_df["수취인명"] if "수취인명" in s_df.columns else ""
     )
-    s_df["배송메세지1"] = s_df.get("배송메세지", "")
-    s_df["주문번호"] = s_df.get("주문번호", "")
+    s_df["원격_받는분전화번호"] = (
+        s_df["수취인 전화번호"] if "수취인 전화번호" in s_df.columns else ""
+    )
+    s_df["원격_받는분기타연락처"] = (
+        s_df["수취인 핸드폰번호"] if "수취인 핸드폰번호" in s_df.columns else ""
+    )
+    s_df["원격_받는분우편번호"] = (
+        s_df["우편번호"] if "우편번호" in s_df.columns else ""
+    )
+    s_df["원격_받는분주소"] = (
+        s_df["수취인주소"] if "수취인주소" in s_df.columns else ""
+    )
+    s_df["상품명_원본"] = s_df["상품명"] if "상품명" in s_df.columns else ""
+    s_df["옵션_원본"] = s_df["옵션"] if "옵션" in s_df.columns else ""
+
+    if "수량" in s_df.columns:
+      s_df["상품수량"] = (
+          pd.to_numeric(s_df["수량"], errors="coerce").fillna(1).astype(int)
+      )
+    else:
+      s_df["상품수량"] = 1
+
+    s_df["배송메세지1"] = (
+        s_df["배송메세지"] if "배송메세지" in s_df.columns else ""
+    )
+    s_df["주문번호"] = s_df["주문번호"] if "주문번호" in s_df.columns else ""
     s_df["주문일"] = date_str
-    s_df["판매처"] = s_df.get("사이트", "샵모아")
+    s_df["판매처"] = s_df["사이트"] if "사이트" in s_df.columns else "샵모아"
 
     # 매출 집계를 위한 컬럼 확보 (판매가, 정산금액)
-    s_df["매출_판매가"] = pd.to_numeric(
-        s_df.get("판매가", 0), errors="coerce"
-    ).fillna(0)
-    s_df["매출_정산금액"] = pd.to_numeric(
-        s_df.get("정산금액", 0), errors="coerce"
-    ).fillna(0)
-    raw_sales_frames.append(s_df)
+    s_df["매출_판매가"] = (
+        pd.to_numeric(s_df["판매가"], errors["coerce"])
+        if "판매가" in s_df.columns
+        else 0
+    )
+    s_df["매출_판매가"] = s_df["매출_판매가"].fillna(0)
 
+    s_df["매출_정산금액"] = (
+        pd.to_numeric(s_df["정산금액"], errors="coerce")
+        if "정산금액" in s_df.columns
+        else 0
+    )
+    s_df["매출_정산금액"] = s_df["매출_정산금액"].fillna(0)
+
+    raw_sales_frames.append(s_df)
     frames.append(s_df)
 
   # 올웨이즈 데이터 표준화
   if always_df is not None and not always_df.empty:
     a_df = always_df.copy()
-    a_df["원격_받는분성명"] = a_df.get("수령인", "")
-    a_df["원격_받는분전화번호"] = a_df.get("수령인 연락처", "")
-    a_df["원격_받는분기타연락처"] = a_df.get("수령인 연락처", "")
-    a_df["원격_받는분우편번호"] = a_df.get("우편번호", "")
-    a_df["원격_받는분주소"] = a_df.get("주소", "")
-    a_df["상품명_원본"] = a_df.get("상품명", "")
-    a_df["옵션_원본"] = a_df.get("옵션", "")
-    a_df["상품수량"] = pd.to_numeric(a_df.get("수량", 1), errors="coerce").fillna(
-        1
+    a_df["원격_받는분성명"] = a_df["수령인"] if "수령인" in a_df.columns else ""
+    a_df["원격_받는분전화번호"] = (
+        a_df["수령인 연락처"] if "수령인 연락처" in a_df.columns else ""
     )
+    a_df["원격_받는분기타연락처"] = (
+        a_df["수령인 연락처"] if "수령인 연락처" in a_df.columns else ""
+    )
+    a_df["원격_받는분우편번호"] = (
+        a_df["우편번호"] if "우편번호" in a_df.columns else ""
+    )
+    a_df["원격_받는분주소"] = a_df["주소"] if "주소" in a_df.columns else ""
+    a_df["상품명_원본"] = a_df["상품명"] if "상품명" in a_df.columns else ""
+    a_df["옵션_원본"] = a_df["옵션"] if "옵션" in a_df.columns else ""
+
+    if "수량" in a_df.columns:
+      a_df["상품수량"] = (
+          pd.to_numeric(a_df["수량"], errors="coerce").fillna(1).astype(int)
+      )
+    else:
+      a_df["상품수량"] = 1
+
     a_df["배송메세지1"] = ""
-    a_df["주문번호"] = a_df.get("주문아이디", "")
+    a_df["주문번호"] = (
+        a_df["주문아이디"] if "주문아이디" in a_df.columns else ""
+    )
     a_df["주문일"] = date_str
     a_df["판매처"] = "올웨이즈"
 
-    # 올웨이즈의 경우 판매가/정산금액 컬럼이 다를 수 있으므로 안전하게 처리
-    a_df["매출_판매가"] = pd.to_numeric(
-        a_df.get("판매가", a_df.get("결제금액", 0)), errors="coerce"
-    ).fillna(0)
-    a_df["매출_정산금액"] = pd.to_numeric(
-        a_df.get("정산금액", a_df.get("공급가액", 0)), errors="coerce"
-    ).fillna(0)
-    raw_sales_frames.append(a_df)
+    # 매출_판매가 확보
+    if "판매가" in a_df.columns:
+      a_df["매출_판매가"] = pd.to_numeric(
+          a_df["판매가"], errors="coerce"
+      ).fillna(0)
+    elif "결제금액" in a_df.columns:
+      a_df["매출_판매가"] = pd.to_numeric(
+          a_df["결제금액"], errors="coerce"
+      ).fillna(0)
+    else:
+      a_df["매출_판매가"] = 0
 
+    # 매출_정산금액 확보
+    if "정산금액" in a_df.columns:
+      a_df["매출_정산금액"] = pd.to_numeric(
+          a_df["정산금액"], errors="coerce"
+      ).fillna(0)
+    elif "공급가액" in a_df.columns:
+      a_df["매출_정산금액"] = pd.to_numeric(
+          a_df["공급가액"], errors="coerce"
+      ).fillna(0)
+    else:
+      a_df["매출_정산금액"] = 0
+
+    raw_sales_frames.append(a_df)
     frames.append(a_df)
 
   if not frames:
@@ -120,7 +173,6 @@ def process_custom_orders(shopmoa_df, always_df):
     opt_name = str(row["옵션_원본"])
     qty = int(row["상품수량"])
 
-    # 1. 가람식품 양식 생성 함수 (거래처코드 16 고정)
     def create_garam_row(name, quantity):
       return {
           "받는분성명": name,
@@ -143,7 +195,6 @@ def process_custom_orders(shopmoa_df, always_df):
           "거래처코드": 16,
       }
 
-    # 2. 키스틱 / 냉동식품 양식 생성 함수 (지정된 빨간색 컬럼만 채우고 나머지 비워둠)
     def create_standard_row(name, quantity):
       return {
           "수령자이름": name,
@@ -223,7 +274,6 @@ def process_custom_orders(shopmoa_df, always_df):
       r_copy["상품명"] = "김말이튀김400g"
       frozen_rows.append(r_copy)
 
-  # 컬럼 정의
   garam_cols = [
       "받는분성명",
       "받는분전화번호",
@@ -244,7 +294,6 @@ def process_custom_orders(shopmoa_df, always_df):
       "정산금액",
       "거래처코드",
   ]
-
   kistic_cols = [
       "수령자이름",
       "수령자전화",
@@ -309,7 +358,6 @@ if st.button("🚀 발주서 변환 및 매출 현황 분석하기", type="prima
         total_orders = len(sales_df)
         total_revenue = sales_df["매출_판매가"].sum()
         total_settle = sales_df["매출_정산금액"].sum()
-        # 정산금액이 없는 경우 판매가의 80% 등으로 가정하거나 정산금액 합산 표시
         estimated_profit = (
             total_settle if total_settle > 0 else total_revenue * 0.8
         )
@@ -320,7 +368,6 @@ if st.button("🚀 발주서 변환 및 매출 현황 분석하기", type="prima
         m3.metric("총 정산금액", f"{total_settle:,.0f} 원")
         m4.metric("예상 순수익", f"{estimated_profit:,.0f} 원")
 
-        # 판매처별 매출 요약
         if "판매처" in sales_df.columns:
           st.markdown("##### 🛒 판매처별 요약")
           channel_summary = (
@@ -336,7 +383,7 @@ if st.button("🚀 발주서 변환 및 매출 현황 분석하기", type="prima
       else:
         st.info("분석할 매출 데이터가 없습니다.")
 
-      # 메모리에 ZIP 파일 생성 (파일명에 발주일자 반영)
+      # 메모리에 ZIP 파일 생성
       zip_buffer = io.BytesIO()
       with zipfile.ZipFile(
           zip_buffer, "w", zipfile.ZIP_DEFLATED
