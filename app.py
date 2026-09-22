@@ -1,112 +1,125 @@
-import io
-import zipfile
 import pandas as pd
-import streamlit as st
-
-# 페이지 설정
-st.set_page_config(
-    page_title="마켓지니 스마트 발주서 변환기",
-    page_icon="📦",
-    layout="wide",
-)
-
-st.title("📦 마켓지니 샵모아 & 올웨이즈 맞춤 발주서 변환기")
-st.markdown(
-    "**샵모아**와 **올웨이즈** 발주서 파일을 동시에(또는 개별로) 업로드하시면, "
-    "공급처별 맞춤 규칙(어묵바 합배송 분리, 키스틱 40/100개 변환 및 홀수 분할, 김말이 팩수 배수 계산)을 적용하여 "
-    "**1. 가람식품, 2. 키스틱, 3. 냉동식품** 3가지 발주서로 분할 압축해 드립니다.",
-    unsafe_allow_html=True,
-)
-
-st.markdown("---")
-
-# 파일 업로드 영역 (샵모아 / 올웨이즈 동시 지원)
-col1, col2 = st.columns(2)
-with col1:
-    shopmoa_file = st.file_uploader(
-        "📥 [샵모아] 통합 발주서 업로드", type=["xlsx", "xls", "csv"], key="shopmoa"
-    )
-with col2:
-    always_file = st.file_uploader(
-        "📥 [올웨이즈] 통합 발주서 업로드", type=["xlsx", "xls", "csv"], key="always"
-    )
 
 
-# 데이터 전처리 및 변환 로직 함수
-def process_orders(shopmoa_df, always_df):
+def process_custom_orders(shopmoa_df, always_df):
     frames = []
-    if shopmoa_df is not None:
-        shopmoa_df["출처"] = "샵모아"
-        frames.append(shopmoa_df)
-    if always_df is not None:
-        always_df["출처"] = "올웨이즈"
-        frames.append(always_df)
+
+    # 1. 샵모아 데이터 표준화
+    if shopmoa_df is not None and not shopmoa_df.empty:
+        s_df = shopmoa_df.copy()
+        s_df["수령자이름"] = s_df.get("수취인명", "")
+        s_df["수령자전화"] = s_df.get("수취인 전화번호", "")
+        s_df["수령자휴대폰"] = s_df.get("수취인 핸드폰번호", "")
+        s_df["수령자우편번호"] = s_df.get("우편번호", "")
+        s_df["수령자주소"] = s_df.get("수취인주소", "")
+        s_df["상품명_원본"] = s_df.get("상품명", "")
+        s_df["옵션_원본"] = s_df.get("옵션", "")
+        s_df["상품수량"] = s_df.get("수량", 1)
+        s_df["배송메모"] = s_df.get("배송메세지", "")
+        s_df["주문번호"] = s_df.get("주문번호", "")
+        frames.append(s_df)
+
+    # 2. 올웨이즈 데이터 표준화 (옵션명에서 상품명 추출)
+    if always_df is not None and not always_df.empty:
+        a_df = always_df.copy()
+        a_df["수령자이름"] = a_df.get("수령인", "")
+        a_df["수령자전화"] = a_df.get("수령인 연락처", "")
+        a_df["수령자휴대폰"] = a_df.get("수령인 연락처", "")
+        a_df["수령자우편번호"] = a_df.get("우편번호", "")
+        a_df["수령자주소"] = a_df.get("주소", "")
+        a_df["상품명_원본"] = a_df.get("상품명", "")
+        a_df["옵션_원본"] = a_df.get("옵션", "")
+        a_df["상품수량"] = a_df.get("수량", 1)
+        a_df["배송메모"] = ""
+        a_df["주문번호"] = a_df.get("주문아이디", "")
+        frames.append(a_df)
 
     if not frames:
         return None, None, None
 
-    combined_df = pd.concat(frames, ignore_index=True)
+    combined = pd.concat(frames, ignore_index=True)
 
-    # ----------------------------------------------------
-    # 여기에 각 공급처별(가람식품, 키스틱, 냉동식품) 가공 로직 구현
-    # ----------------------------------------------------
+    garam_rows = []
+    kistic_rows = []
+    frozen_rows = []
 
-    # 예시: 키스틱 40/100개 변환 및 홀수 분할, 어묵바 분리, 김말이 팩수 계산 등 규칙 적용
-    garam_df = combined_df.copy()  # 가람식품 데이터 프레임 예시
-    kistic_df = combined_df.copy()  # 키스틱 데이터 프레임 예시
-    frozen_df = combined_df.copy()  # 냉동식품 데이터 프레임 예시
+    for _, row in combined.iterrows():
+        p_name = str(row["상품명_원본"])
+        opt_name = str(row["옵션_원본"])
+        qty = int(row["상품수량"]) if pd.notnull(row["상품수량"]) else 1
+
+        # 1. 부산어묵바 (가람식품) 판별
+        if "어묵바" in p_name or "어묵바" in opt_name:
+            # 옵션명 또는 상품명에서 어묵바 종류 추출
+            target_name = "오리지날 부산어묵바"
+            if "매콤달콤" in opt_name or "매콤달콤" in p_name:
+                target_name = "매콤달콤 부산어묵바"
+            elif "오징어야채" in opt_name or "오징어야채" in p_name:
+                target_name = "오징어야채 부산어묵바"
+            elif "체다치즈" in opt_name or "체다치즈" in p_name:
+                target_name = "체다치즈 부산어묵바"
+
+            # 합배송 불가: 수량만큼 행을 쪼개고 이름 뒤에 숫자 부여
+            for i in range(qty):
+                new_row = row.copy()
+                new_row["수령자이름"] = (
+                    f"{row['수령자이름']}{i+1}" if qty > 1 else row["수령자이름"]
+                )
+                new_row["상품명"] = target_name
+                new_row[1] = 1  # 1개씩 개별 발주
+                garam_rows.append(new_row)
+
+        # 2. 키스틱 판별
+        elif "키스틱" in p_name or "키스틱" in opt_name:
+            is_40 = "40개" in p_name or "40개" in opt_name
+
+            if is_40:
+                if qty == 2:
+                    # 40개 2개 -> 100개 1세트로 변환
+                    new_row = row.copy()
+                    new_row["상품명"] = "키스틱 15g x 100개"
+                    new_row[1] = 1
+                    kistic_rows.append(new_row)
+                elif qty == 3:
+                    # 홀수 분할: 40개 1세트 + 100개 1세트 (총 2행 생성)
+                    row1 = row.copy()
+                    row1["상품명"] = "키스틱 15g x 40개"
+                    row1[1] = 1
+                    kistic_rows.append(row1)
+
+                    row2 = row.copy()
+                    row2["수령자이름"] = f"{row['수령자이름']}2"
+                    row2["상품명"] = "키스틱 15g x 100개"
+                    row2[1] = 1
+                    kistic_rows.append(row2)
+                else:
+                    # 일반 40개 처리
+                    new_row = row.copy()
+                    new_row["상품명"] = "키스틱 15g x 40개"
+                    new_row[1] = qty
+                    kistic_rows.append(new_row)
+            else:
+                # 100개 상품 그대로 반영
+                new_row = row.copy()
+                new_row["상품명"] = "키스틱 15g x 100개"
+                new_row[1] = qty
+                kistic_rows.append(new_row)
+
+        # 3. 냉동식품 (고추잡채군만두, 김말이) 판별
+        elif "만두" in p_name or "고추잡채" in p_name:
+            new_row = row.copy()
+            new_row["상품명"] = "더 바삭한 중화 고추잡채 군만두 1.2kg"
+            new_row["상품수량"] = qty
+            frozen_rows.append(new_row)
+
+        elif "김말이" in p_name:
+            new_row = row.copy()
+            new_row["상품명"] = "김말이튀김400g"
+            new_row["상품수량"] = qty * 3  # 기본 1세트당 3팩 곱하기
+            frozen_rows.append(new_row)
+
+    garam_df = pd.DataFrame(garam_rows) if garam_rows else None
+    kistic_df = pd.DataFrame(kistic_rows) if kistic_rows else None
+    frozen_df = pd.DataFrame(frozen_rows) if frozen_rows else None
 
     return garam_df, kistic_df, frozen_df
-
-
-# 변환 실행 버튼
-if st.button("🔄 맞춤형 발주서 변환 및 3개 공급처별 분할 실행", type="primary", use_container_width=True):
-    if shopmoa_file is None and always_file is None:
-        st.warning("⚠️ 샵모아 또는 올웨이즈 발주서 파일을 최소 1개 이상 업로드해 주세요.")
-    else:
-        try:
-            # 파일 읽기
-            s_df = (
-                pd.read_excel(shopmoa_file)
-                if shopmoa_file
-                else None
-            )
-            a_df = (
-                pd.read_excel(always_file)
-                if always_file
-                else None
-            )
-
-            garam, kistic, frozen = process_orders(s_df, a_df)
-
-            # 결과물 ZIP 압축 생성
-            zip_buffer = io.BytesIO()
-            with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-                if garam is not None:
-                    g_io = io.BytesIO()
-                    garam.to_excel(g_io, index=False)
-                    zip_file.writestr("1_가람식품_발주서.xlsx", g_io.getvalue())
-
-                if kistic is not None:
-                    k_io = io.BytesIO()
-                    kistic.to_excel(k_io, index=False)
-                    zip_file.writestr("2_키스틱_발주서.xlsx", k_io.getvalue())
-
-                if frozen is not None:
-                    f_io = io.BytesIO()
-                    frozen.to_excel(f_io, index=False)
-                    zip_file.writestr("3_냉동식품_발주서.xlsx", f_io.getvalue())
-
-            zip_buffer.seek(0)
-
-            st.success("✨ 성공적으로 변환되었습니다! 아래 버튼을 눌러 다운로드하세요.")
-            st.download_button(
-                label="📥 3개 공급처별 발주서 ZIP 다운로드",
-                data=zip_buffer,
-                file_name="마켓지니_맞춤발주서_통합세트.zip",
-                mime="application/zip",
-                use_container_width=True,
-            )
-
-        except Exception as e:
-            st.error(f"❌ 변환 중 오류가 발생했습니다: {e}")
