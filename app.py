@@ -70,7 +70,7 @@ def process_custom_orders(shopmoa_df, always_df):
     frames.append(a_df)
 
   if not frames:
-    return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+    return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), date_str
 
   combined = pd.concat(frames, ignore_index=True)
 
@@ -83,7 +83,7 @@ def process_custom_orders(shopmoa_df, always_df):
     opt_name = str(row["옵션_원본"])
     qty = int(row["상품수량"])
 
-    # 1. 가람식품 양식 딕셔너리 구조 (요청하신 정확한 컬럼 순서 및 거래처코드 16 고정)
+    # 1. 가람식품 양식 딕셔너리 구조 (거래처코드 16 고정)
     def create_garam_row(name, quantity):
       return {
           "받는분성명": name,
@@ -131,13 +131,13 @@ def process_custom_orders(shopmoa_df, always_df):
 
     # 1. 가람식품 (부산어묵바류) 분류
     if "어묵바" in p_name or "어묵바" in opt_name:
-      target_name = "오리지날 부산어묵바"
+      target_name = "오리지날 부산어묵바 80g x 10개"
       if "매콤달콤" in opt_name or "매콤달콤" in p_name:
-        target_name = "매콤달콤 부산어묵바"
+        target_name = "매콤달콤 부산어묵바 80g x 10개"
       elif "오징어야채" in opt_name or "오징어야채" in p_name:
-        target_name = "오징어야채 부산어묵바"
+        target_name = "오징어야채 부산어묵바 80g x 10개"
       elif "체다치즈" in opt_name or "체다치즈" in p_name:
-        target_name = "체다치즈 부산어묵바"
+        target_name = "체다치즈 부산어묵바 80g x 10개"
 
       # 합배송 불가: 수량만큼 행 분리 및 수령자명 뒤 숫자 부여
       base_name = str(row["원격_받는분성명"])
