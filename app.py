@@ -5,24 +5,29 @@ import pandas as pd
 import streamlit as st
 
 st.set_page_config(
-    page_title="마켓지니 스마트 발주서 변환기", page_icon="📦", layout="centered"
+    page_title="마켓지니 판매관리 프로그램", page_icon="📦", layout="centered"
 )
 
-st.title("📦 마켓지니 스마트 발주서 변환기")
+st.title("📦 마켓지니 판매관리 프로그램")
 st.write(
     "샵모아와 올웨이즈 발주서 파일을 업로드한 후 실행 버튼을 누르면, 지정된 양식에 맞춘 3개 공급처별 발주서 파일이 담긴 ZIP 압축파일을 생성합니다."
 )
 
 st.markdown("---")
 
-# 1. 파일 업로드 섹션
+# 1. 파일 업로드 섹션 (1줄 좌우 배치)
 st.subheader("1. 발주서 파일 업로드")
-shopmoa_file = st.file_uploader(
-    "샵모아 발주서 파일 업로드 (.xlsx)", type=["xlsx", "xls"], key="shopmoa"
-)
-always_file = st.file_uploader(
-    "올웨이즈 발주서 파일 업로드 (.xlsx)", type=["xlsx", "xls"], key="always"
-)
+col1, col2 = st.columns(2)
+
+with col1:
+  shopmoa_file = st.file_uploader(
+      "샵모아 발주서 파일 (.xlsx)", type=["xlsx", "xls"], key="shopmoa"
+  )
+
+with col2:
+  always_file = st.file_uploader(
+      "올웨이즈 발주서 파일 (.xlsx)", type=["xlsx", "xls"], key="always"
+  )
 
 
 def process_custom_orders(shopmoa_df, always_df):
@@ -106,7 +111,7 @@ def process_custom_orders(shopmoa_df, always_df):
           "거래처코드": 16,
       }
 
-    # 2. 키스틱 / 냉동식품 양식 생성 함수 (빨간색 컬럼만 채우고 배송메모, 판매처, 발주일 등은 비워둠)
+    # 2. 키스틱 / 냉동식품 양식 생성 함수 (지정된 빨간색 컬럼만 채우고 나머지 비워둠)
     def create_standard_row(name, quantity):
       return {
           "수령자이름": name,
@@ -115,15 +120,15 @@ def process_custom_orders(shopmoa_df, always_df):
           "수령자우편번호": row["원격_받는분우편번호"],
           "수령자주소": row["원격_받는분주소"],
           "상품수량": quantity,
-          "배송메모": "",  # 비워둠
+          "배송메모": "",
           "제조사": "",
           "카테고리": "",
           "품절": "",
           "배송 보류": "",
           "상품명": "",
-          "판매처": "",  # 비워둠
+          "판매처": "",
           "주문번호": row["주문번호"],
-          "발주일": "",  # 비워둠
+          "발주일": "",
           "관리번호": "",
           "상태": "",
           "송장번호": "",
@@ -147,7 +152,7 @@ def process_custom_orders(shopmoa_df, always_df):
         garam_rows.append(r_copy)
 
     # 2. 키스틱류 분류
-    elif "키스틱" in p_name or "키스틱" in opt_name:
+    elif "키ส틱" in p_name or "키스틱" in opt_name:
       is_40 = "40개" in p_name or "40개" in opt_name
       base_name = str(row["원격_받는분성명"])
 
@@ -249,6 +254,7 @@ def process_custom_orders(shopmoa_df, always_df):
 
 
 # 2. 실행 버튼 및 압축 다운로드 섹션
+st.markdown("---")
 st.subheader("2. 맞춤형 발주서 변환 실행")
 
 if st.button("🚀 발주서 변환 및 압축파일 생성하기", type="primary"):
