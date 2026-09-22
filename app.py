@@ -206,7 +206,7 @@ def process_file_data(df, default_channel_name):
         detected_channel = "올웨이즈"
         break
 
-    # 💡 파일 내부 행 데이터에 표기된 날짜를 'YYYYMMDD' 형식으로 변환
+    # 💡 파일 내부 행 데이터에 표기된 날짜를 우선적으로 추출 (없으면 오늘 날짜)
     row_date = None
     for date_col_candidate in [
         "주문일",
@@ -218,14 +218,11 @@ def process_file_data(df, default_channel_name):
       if date_col_candidate in row and pd.notna(row[date_col_candidate]):
         parsed_d = pd.to_datetime(row[date_col_candidate], errors="coerce")
         if pd.notna(parsed_d):
-          row_date = parsed_d.strftime("%Y%m%d")  # 💡 하이픈 없는 YYYYMMDD 형태
+          row_date = parsed_d.strftime("%Y-%m-%d")
           break
 
     if not row_date:
-      row_date = datetime.now().strftime("%Y%m%d")
-
-    # 순수 매출 통계용 대시보드 비교를 위한 YYYY-MM-DD 형식 별도 생성
-    dash_date = f"{row_date[:4]}-{row_date[4:6]}-{row_date[6:]}"
+      row_date = datetime.now().strftime("%Y-%m-%d")
 
     if default_channel_name == "샵모아":
       sname = row.get("수취인명", "")
@@ -254,7 +251,7 @@ def process_file_data(df, default_channel_name):
 
     for _ in range(max(1, qty)):
       sales_data_list.append({
-          "업로드일자": dash_date,  # 매출 대시보드 집계용
+          "업로드일자": row_date,  # 💡 파일표기 날짜를 매출 누적의 기준 날짜로 사용
           "판매처": detected_channel,
           "주문번호": order_id,
           "상품명": fin["카테고리"],
@@ -276,7 +273,7 @@ def process_file_data(df, default_channel_name):
         "상품수량": qty,
         "배송메세지1": msg,
         "주문번호": order_id,
-        "주문일": row_date,  # 💡 최종 발주서 파일에 기재될 YYYYMMDD 형태의 날짜
+        "주문일": row_date,
         "판매처": detected_channel,
     }
     frames.append(base_row)
@@ -583,7 +580,7 @@ if run_clicked:
           )
 
         st.success(
-            "✨ 발주서 내 표기된 날짜가 YYYYMMDD 형태로 변환되어 누적되었습니다!"
+            "✨ 발주서 내 표기된 날짜 기준으로 데이터가 성공적으로 누적되었습니다!"
         )
       else:
         st.info("새롭게 반영할 신규 데이터가 없습니다.")
