@@ -8,9 +8,19 @@ st.set_page_config(
     page_title="마켓지니 판매관리 프로그램", page_icon="📦", layout="centered"
 )
 
+# 세션 상태 초기화 (누적 데이터 저장용)
+if "accumulated_sales" not in st.session_state:
+  st.session_state["accumulated_sales"] = pd.DataFrame()
+if "accumulated_garam" not in st.session_state:
+  st.session_state["accumulated_garam"] = pd.DataFrame()
+if "accumulated_kistic" not in st.session_state:
+  st.session_state["accumulated_kistic"] = pd.DataFrame()
+if "accumulated_frozen" not in st.session_state:
+  st.session_state["accumulated_frozen"] = pd.DataFrame()
+
 st.title("📦 마켓지니 판매관리 프로그램")
 st.write(
-    "샵모아와 올웨이즈 발주서 파일을 업로드하면, 지정된 단가·배송비·판매가 기준에 맞춘 공급처별 발주서와 **상세 매출 및 순수익 현황**을 제공합니다."
+    "샵모아와 올웨이즈 발주서 파일을 업로드하면, 지정된 단가·배송비·판매가 기준에 맞춘 공급처별 발주서와 **플랫폼별 누적 매출 및 순수익 현황**을 제공합니다."
 )
 
 st.markdown("---")
@@ -87,17 +97,13 @@ def calculate_item_finance(product_name, option_name, channel):
       cost_price = int(536 * 1.1 * 10)  # 5,896원
       item_category = "오리지날 부산어묵바"
   else:
-    # 기본 방어 로직
     selling_price = 10000
     cost_price = 5000
     shipping_fee = 3000
     item_category = "기타상품"
 
-  # 플랫폼 수수료 (공개된 표준 플랫폼 수수료 약 10% 적용 또는 파일 내 정산금액 활용)
-  # 판매가의 10%를 플랫폼 수수료로 책정
+  # 플랫폼 수수료 (판매가의 10% 가정 또는 표준 수수료)
   platform_fee = selling_price * 0.10
-
-  # 순수익 = 판매가 - 원가 - 배송비 - 플랫폼수수료
   net_profit = selling_price - cost_price - shipping_fee - platform_fee
 
   return {
@@ -113,14 +119,12 @@ def calculate_item_finance(product_name, option_name, channel):
 def process_custom_orders(shopmoa_df, always_df):
   frames = []
   sales_data_list = []
-  date_str = datetime.now().strftime("%Y%m%d")
+  date_str = datetime.now().strftime("%Y-%m-%d")
 
-  # 데이터 통합 처리 함수
   def parse_dataframe(df, channel_name):
     if df is None or df.empty:
       return
     for _, row in df.iterrows():
-      # 원본 데이터 추출
       if channel_name == "샵모아":
         sname = row.get("수취인명", "")
         phone = row.get("수취인 전화번호", "")
@@ -132,7 +136,7 @@ def process_custom_orders(shopmoa_df, always_df):
         qty = int(pd.to_numeric(row.get("수량", 1), errors="coerce"))
         msg = row.get("배송메세지", "")
         order_id = row.get("주문번호", "")
-      else:  # 올웨이즈
+      else:
         sname = row.get("수령인", "")
         phone = row.get("수령인 연락처", "")
         mobile = row.get("수령인 연락처", "")
@@ -144,14 +148,13 @@ def process_custom_orders(shopmoa_df, always_df):
         msg = ""
         order_id = row.get("주문아이디", "")
 
-      # 금융/원가 정보 계산
       fin = calculate_item_finance(p_name, opt_name, channel_name)
 
-      # 매출 집계 리스트에 추가 (수량 고려)
       for _ in range(max(1, qty)):
         sales_data_list.append({
+            "업로드일자": date_str,
             "판매처": channel_name,
-            "주문번호": order_id,
+            "주문번호": str(order_id),
             "상품명": fin["카테고리"],
             "판매가": fin["판매가"],
             "원가": fin["원가"],
@@ -160,7 +163,6 @@ def process_custom_orders(shopmoa_df, always_df):
             "순수익": fin["순수익"],
         })
 
-      # 발주서용 데이터 행 구성
       base_row = {
           "원격_받는분성명": sname,
           "원격_받는분전화번호": phone,
@@ -245,7 +247,6 @@ def process_custom_orders(shopmoa_df, always_df):
           "송장번호": "",
       }
 
-    # 1. 가람식품 (어묵바류) 분류
     if "어묵바" in p_name or "어묵바" in opt_name:
       target_name = "오리지날 부산어묵바 80g x 10개"
       if "매콤달콤" in opt_name or "매콤달콤" in p_name:
@@ -262,7 +263,6 @@ def process_custom_orders(shopmoa_df, always_df):
         r_copy["품명"] = target_name
         garam_rows.append(r_copy)
 
-    # 2. 키스틱류 분류
     elif "키스틱" in p_name or "키스틱" in opt_name:
       is_40 = "40개" in p_name or "40개" in opt_name
       base_name = str(row["원격_받는분성명"])
@@ -288,7 +288,6 @@ def process_custom_orders(shopmoa_df, always_df):
         r_copy["상품명"] = "키스틱 15g x 100개"
         kistic_rows.append(r_copy)
 
-    # 3. 냉동식품류
     elif "만두" in p_name or "고추잡채" in p_name:
       base_name = str(row["원격_받는분성명"])
       r_copy = create_standard_row(base_name, qty)
@@ -363,9 +362,23 @@ def process_custom_orders(shopmoa_df, always_df):
 
 # 2. 실행 버튼 및 압축 다운로드 섹션
 st.markdown("---")
-st.subheader("2. 맞춤형 발주서 변환 및 순수익 분석 실행")
+st.subheader("2. 맞춤형 발주서 변환 및 누적 수익 분석 실행")
 
-if st.button("🚀 발주서 변환 및 매출·순수익 분석하기", type="primary"):
+col_btn1, col_btn2 = st.columns([3, 1])
+with col_btn1:
+  run_clicked = st.button(
+      "🚀 발주서 변환 및 누적 데이터 반영하기", type="primary"
+  )
+with col_btn2:
+  if st.button("🧹 누적 데이터 초기화"):
+    st.session_state["accumulated_sales"] = pd.DataFrame()
+    st.session_state["accumulated_garam"] = pd.DataFrame()
+    st.session_state["accumulated_kistic"] = pd.DataFrame()
+    st.session_state["accumulated_frozen"] = pd.DataFrame()
+    st.success("누적 데이터가 초기화되었습니다.")
+    st.rerun()
+
+if run_clicked:
   if shopmoa_file is None and always_file is None:
     st.warning("최소 한 개 이상의 발주서 파일을 업로드해 주세요.")
   else:
@@ -377,75 +390,122 @@ if st.button("🚀 발주서 변환 및 매출·순수익 분석하기", type="p
           process_custom_orders(s_df, a_df)
       )
 
-      # --- [매출 및 순수익 현황 대시보드] ---
-      st.markdown("---")
-      st.subheader(f"📊 [{date_str}] 당일 매출 및 순수익 분석 현황")
-
+      # 세션 상태에 데이터 누적 합산
       if not sales_df.empty:
-        total_orders = len(sales_df)
-        total_revenue = sales_df["판매가"].sum()
-        total_cost = sales_df["원가"].sum()
-        total_shipping = sales_df["배송비"].sum()
-        total_platform_fee = sales_df["플랫폼수수료"].sum()
-        total_net_profit = sales_df["순수익"].sum()
-
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("총 주문 건수", f"{total_orders:,} 건")
-        m2.metric("총 판매 매출액", f"{total_revenue:,.0f} 원")
-        m3.metric("총 원가+배송+수수료", f"{(total_cost + total_shipping + total_platform_fee):,.0f} 원")
-        m4.metric("당일 총 순수익", f"{total_net_profit:,.0f} 원", delta=f"마진율 {(total_net_profit/total_revenue*100):.1f}%" if total_revenue > 0 else "0%")
-
-        st.markdown("##### 🛒 상품별 판매 및 순수익 상세")
-        item_summary = (
-            sales_df.groupby("상품명")
-            .agg(
-                판매수량=("판매가", "count"),
-                총판매가=("판매가", "sum"),
-                총순수익=("순수익", "sum"),
-            )
-            .reset_index()
+        st.session_state["accumulated_sales"] = pd.concat(
+            [st.session_state["accumulated_sales"], sales_df], ignore_index=True
         )
-        st.dataframe(item_summary, use_container_width=True)
-      else:
-        st.info("분석할 매출 데이터가 없습니다.")
+      if not garam_df.empty:
+        st.session_state["accumulated_garam"] = pd.concat(
+            [st.session_state["accumulated_garam"], garam_df], ignore_index=True
+        )
+      if not kistic_df.empty:
+        st.session_state["accumulated_kistic"] = pd.concat(
+            [st.session_state["accumulated_kistic"], kistic_df], ignore_index=True
+        )
+      if not frozen_df.empty:
+        st.session_state["accumulated_frozen"] = pd.concat(
+            [st.session_state["accumulated_frozen"], frozen_df], ignore_index=True
+        )
 
-      # 메모리에 ZIP 파일 생성
-      zip_buffer = io.BytesIO()
-      with zipfile.ZipFile(
-          zip_buffer, "w", zipfile.ZIP_DEFLATED
-      ) as zip_file:
-        if not garam_df.empty:
-          g_io = io.BytesIO()
-          with pd.ExcelWriter(g_io, engine="openpyxl") as writer:
-            garam_df.to_excel(writer, index=False)
-          zip_file.writestr(f"가람식품_발주서_{date_str}.xlsx", g_io.getvalue())
-
-        if not kistic_df.empty:
-          k_io = io.BytesIO()
-          with pd.ExcelWriter(k_io, engine="openpyxl") as writer:
-            kistic_df.to_excel(writer, index=False)
-          zip_file.writestr(f"키스틱_발주서_{date_str}.xlsx", k_io.getvalue())
-
-        if not frozen_df.empty:
-          f_io = io.BytesIO()
-          with pd.ExcelWriter(f_io, engine="openpyxl") as writer:
-            frozen_df.to_excel(writer, index=False)
-          zip_file.writestr(f"냉동식품_발주서_{date_str}.xlsx", f_io.getvalue())
-
-      zip_buffer.seek(0)
-
-      st.markdown("---")
       st.success(
-          f"✨ [{date_str}] 기준 발주서 변환 및 순수익 분석이 완료되었습니다!"
-          " 아래 버튼을 눌러 압축파일을 다운로드하세요."
-      )
-
-      st.download_button(
-          label=f"📥 3개 공급처 발주서 ZIP 압축파일 다운로드 ({date_str})",
-          data=zip_buffer,
-          file_name=f"마켓지니_통합발주서_{date_str}.zip",
-          mime="application/zip",
+          f"✨ 새로운 데이터가 성공적으로 누적 반영되었습니다! (기준일자: {date_str})"
       )
 
     except Exception as e:
       st.error(f"파일 처리 중 오류가 발생했습니다: {e}")
+
+# --- [플랫폼별 누적 매출 및 순수익 현황 대시보드] ---
+st.markdown("---")
+st.subheader("📊 [누적 데이터] 플랫폼별 매출 및 순수익 현황")
+
+acc_sales = st.session_state["accumulated_sales"]
+
+if not acc_sales.empty:
+  total_orders = len(acc_sales)
+  total_revenue = acc_sales["판매가"].sum()
+  total_cost = acc_sales["원가"].sum()
+  total_shipping = acc_sales["배송비"].sum()
+  total_platform_fee = acc_sales["플랫폼수수료"].sum()
+  total_net_profit = acc_sales["순수익"].sum()
+
+  m1, m2, m3, m4 = st.columns(4)
+  m1.metric("누적 총 주문 건수", f"{total_orders:,} 건")
+  m2.metric("누적 총 판매 매출액", f"{total_revenue:,.0f} 원")
+  m3.metric(
+      "누적 원가+배송+수수료",
+      f"{(total_cost + total_shipping + total_platform_fee):,.0f} 원",
+  )
+  m4.metric(
+      "누적 총 순수익",
+      f"{total_net_profit:,.0f} 원",
+      delta=(
+          f"마진율 {(total_net_profit/total_revenue*100):.1f}%"
+          if total_revenue > 0
+          else "0%"
+      ),
+  )
+
+  st.markdown("##### 🛒 플랫폼별 누적 매출 및 순수익 상세")
+  platform_summary = (
+      acc_sales.groupby("판매처")
+      .agg(
+          주문건수=("판매가", "count"),
+          총판매가=("판매가", "sum"),
+          총원가=("원가", "sum"),
+          총배송비=("배송비", "sum"),
+          플랫폼수수료합계=("플랫폼수수료", "sum"),
+          총순수익=("순수익", "sum"),
+      )
+      .reset_index()
+  )
+  st.dataframe(platform_summary, use_container_width=True)
+
+  # 일자별 누적 추이 요약
+  st.markdown("##### 📅 업로드 일자별 누적 요약")
+  date_summary = (
+      acc_sales.groupby("업로드일자")
+      .agg(
+          주문건수=("판매가", "count"),
+          매출액=("판매가", "sum"),
+          순수익=("순수익", "sum"),
+      )
+      .reset_index()
+  )
+  st.dataframe(date_summary, use_container_width=True)
+
+  # 누적 발주서 ZIP 파일 생성 버튼
+  zip_buffer = io.BytesIO()
+  with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+    if not st.session_state["accumulated_garam"].empty:
+      g_io = io.BytesIO()
+      with pd.ExcelWriter(g_io, engine="openpyxl") as writer:
+        st.session_state["accumulated_garam"].to_excel(writer, index=False)
+      zip_file.writestr("가람식품_통합누적_발주서.xlsx", g_io.getvalue())
+
+    if not st.session_state["accumulated_kistic"].empty:
+      k_io = io.BytesIO()
+      with pd.ExcelWriter(k_io, engine="openpyxl") as writer:
+        st.session_state["accumulated_kistic"].to_excel(writer, index=False)
+      zip_file.writestr("키스틱_통합누적_발주서.xlsx", k_io.getvalue())
+
+    if not st.session_state["accumulated_frozen"].empty:
+      f_io = io.BytesIO()
+      with pd.ExcelWriter(f_io, engine="openpyxl") as writer:
+        st.session_state["accumulated_frozen"].to_excel(writer, index=False)
+      zip_file.writestr("냉동식품_통합누적_발주서.xlsx", f_io.getvalue())
+
+  zip_buffer.seek(0)
+
+  st.markdown("---")
+  st.download_button(
+      label="📥 전체 누적 통합 발주서 ZIP 압축파일 다운로드",
+      data=zip_buffer,
+      file_name="마켓지니_전체누적_통합발주서.zip",
+      mime="application/zip",
+  )
+else:
+  st.info(
+      "아직 업로드 및 반영된 매출 데이터가 없습니다. 파일을 업로드하고 버튼을"
+      " 눌러주세요."
+  )
