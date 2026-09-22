@@ -24,21 +24,25 @@ st.write(
     " 공급처별 통합 발주서를 생성합니다."
 )
 
-st.markdown("---")
-
-# 0. 플랫폼별 수수료율 설정 사이드바 또는 상단 설정 영역
-st.subheader("⚙️ 플랫폼 수수료율 설정 (%)")
-col_f1, col_f2, col_f3, col_f4, col_f5 = st.columns(5)
-with col_f1:
-  fee_smart = st.number_input("스마트스토어", value=5.80, step=0.1, format="%.2f")
-with col_f2:
-  fee_always = st.number_input("올웨이즈", value=5.50, step=0.1, format="%.2f")
-with col_f3:
-  fee_coupang = st.number_input("쿠팡", value=10.80, step=0.1, format="%.2f")
-with col_f4:
-  fee_gmarket = st.number_input("지마켓", value=13.00, step=0.1, format="%.2f")
-with col_f5:
-  fee_auction = st.number_input("옥션", value=13.00, step=0.1, format="%.2f")
+# ⚙️ 플랫폼 수수료율 설정 (평소에는 접혀있도록 expander로 숨김 처리)
+with st.expander("⚙️ 플랫폼 수수료율 상세 설정 (클릭하여 열기)", expanded=False):
+  col_f1, col_f2, col_f3, col_f4, col_f5, col_f6 = st.columns(6)
+  with col_f1:
+    fee_smart = st.number_input(
+        "스마트스토어", value=5.80, step=0.1, format="%.2f"
+    )
+  with col_f2:
+    fee_always = st.number_input("올웨이즈", value=5.50, step=0.1, format="%.2f")
+  with col_f3:
+    fee_coupang = st.number_input("쿠팡", value=10.80, step=0.1, format="%.2f")
+  with col_f4:
+    fee_gmarket = st.number_input("지마켓", value=13.00, step=0.1, format="%.2f")
+  with col_f5:
+    fee_auction = st.number_input("옥션", value=13.00, step=0.1, format="%.2f")
+  with col_f6:
+    fee_kakao = st.number_input(
+        "카카오쇼핑하기", value=10.00, step=0.1, format="%.2f"
+    )
 
 fee_rates = {
     "스마트스토어": fee_smart / 100.0,
@@ -48,6 +52,8 @@ fee_rates = {
     "지마켓": fee_gmarket / 100.0,
     "G마켓": fee_gmarket / 100.0,
     "옥션": fee_auction / 100.0,
+    "카카오쇼핑하기": fee_kakao / 100.0,
+    "카카오": fee_kakao / 100.0,
 }
 
 st.markdown("---")
@@ -65,21 +71,6 @@ with col2:
   always_file = st.file_uploader(
       "올웨이즈 발주서 파일 (.xlsx)", type=["xlsx", "xls"], key="always"
   )
-
-
-def detect_platform(row, default_channel):
-  """업로드된 데이터 내에서 판매처(플랫폼) 명칭을 감지합니다."""
-  # 컬럼 탐색
-  for col in row.index:
-    val_str = str(row[col])
-    for p_name in ["쿠팡", "스마트스토어", "네이버", "지마켓", "G마켓", "옥션", "올웨이즈"]:
-      if p_name in val_str or p_name in str(col):
-        if "네이버" in p_name:
-          return "스마트스토어"
-        if "G마켓" in p_name:
-          return "지마켓"
-        return p_name
-  return default_channel
 
 
 def calculate_item_finance(product_name, option_name, channel):
@@ -168,21 +159,31 @@ def process_custom_orders(shopmoa_df, always_df):
     if df is None or df.empty:
       return
     for _, row in df.iterrows():
-      # 파일 내부에서 실제 판매처 컬럼 확인 시도
       detected_channel = default_channel_name
-      for col in ["판매처", "쇼핑몰", "채널", "사이트"]:
-        if col in row and pd.notna(row[col]):
-          val = str(row[col])
-          if "쿠팡" in val:
-            detected_channel = "쿠팡"
-          elif "스마트스토어" in val or "네이버" in val:
-            detected_channel = "스마트스토어"
-          elif "지마켓" in val or "G마켓" in val:
-            detected_channel = "지마켓"
-          elif "옥션" in val:
-            detected_channel = "옥션"
-          elif "올웨이즈" in val:
-            detected_channel = "올웨이즈"
+      for col in row.index:
+        val = str(row[col])
+        if "쿠팡" in val or "쿠팡" in str(col):
+          detected_channel = "쿠팡"
+          break
+        elif (
+            "스마트스토어" in val
+            or "네이버" in val
+            or "스마트스토어" in str(col)
+        ):
+          detected_channel = "스마트스토어"
+          break
+        elif "지마켓" in val or "G마켓" in val or "지마켓" in str(col):
+          detected_channel = "지마켓"
+          break
+        elif "옥션" in val or "옥션" in str(col):
+          detected_channel = "옥션"
+          break
+        elif "카카오" in val or "쇼핑하기" in val or "카카오" in str(col):
+          detected_channel = "카카오쇼핑하기"
+          break
+        elif "올웨이즈" in val or "올웨이즈" in str(col):
+          detected_channel = "올웨이즈"
+          break
 
       if default_channel_name == "샵모아":
         sname = row.get("수취인명", "")
@@ -480,6 +481,16 @@ st.subheader("📊 [누적 데이터] 플랫폼별 매출 및 순수익 현황")
 acc_sales = st.session_state["accumulated_sales"]
 
 if not acc_sales.empty:
+  # 정해진 6개 플랫폼 순서로 리스트 강제 정렬 또는 표시
+  target_platforms = [
+      "스마트스토어",
+      "옥션",
+      "지마켓",
+      "올웨이즈",
+      "쿠팡",
+      "카카오쇼핑하기",
+  ]
+
   total_orders = len(acc_sales)
   total_revenue = acc_sales["판매가"].sum()
   total_cost = acc_sales["원가"].sum()
@@ -515,6 +526,8 @@ if not acc_sales.empty:
           플랫폼수수료합계=("플랫폼수수료", "sum"),
           총순수익=("순수익", "sum"),
       )
+      .reindex(target_platforms)
+      .fillna(0)
       .reset_index()
   )
   st.dataframe(platform_summary, use_container_width=True)
