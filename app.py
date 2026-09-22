@@ -206,7 +206,7 @@ def process_file_data(df, default_channel_name):
         detected_channel = "올웨이즈"
         break
 
-    # 💡 파일 내부 행 데이터에 표기된 날짜를 우선적으로 추출 (없으면 오늘 날짜)
+    # 💡 파일 내부 행 데이터에 표기된 날짜를 'YYYYMMDD' 형식으로 변환
     row_date = None
     for date_col_candidate in [
         "주문일",
@@ -218,11 +218,14 @@ def process_file_data(df, default_channel_name):
       if date_col_candidate in row and pd.notna(row[date_col_candidate]):
         parsed_d = pd.to_datetime(row[date_col_candidate], errors="coerce")
         if pd.notna(parsed_d):
-          row_date = parsed_d.strftime("%Y-%m-%d")
+          row_date = parsed_d.strftime("%Y%m%d")  # 💡 하이픈 없는 YYYYMMDD 형태
           break
 
     if not row_date:
-      row_date = datetime.now().strftime("%Y-%m-%d")
+      row_date = datetime.now().strftime("%Y%m%d")
+
+    # 순수 매출 통계용 대시보드 비교를 위한 YYYY-MM-DD 형식 별도 생성
+    dash_date = f"{row_date[:4]}-{row_date[4:6]}-{row_date[6:]}"
 
     if default_channel_name == "샵모아":
       sname = row.get("수취인명", "")
@@ -251,7 +254,7 @@ def process_file_data(df, default_channel_name):
 
     for _ in range(max(1, qty)):
       sales_data_list.append({
-          "업로드일자": row_date,  # 💡 파일표기 날짜를 매출 누적의 기준 날짜로 사용
+          "업로드일자": dash_date,
           "판매처": detected_channel,
           "주문번호": order_id,
           "상품명": fin["카테고리"],
@@ -273,7 +276,7 @@ def process_file_data(df, default_channel_name):
         "상품수량": qty,
         "배송메세지1": msg,
         "주문번호": order_id,
-        "주문일": row_date,
+        "주문일": row_date,  # 💡 최종 발주서 파일에 기재될 YYYYMMDD 형태의 날짜
         "판매처": detected_channel,
     }
     frames.append(base_row)
@@ -290,36 +293,6 @@ col_btn1, col_btn2, col_btn3 = st.columns([2, 2, 1])
 with col_btn1:
   run_clicked = st.button(
       "🚀 발주서 변환 및 누적 데이터 반영하기", type="primary"
-  )
-
-with col_btn2:
-  zip_buffer = io.BytesIO()
-  with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-    if not st.session_state["accumulated_garam"].empty:
-      g_io = io.BytesIO()
-      with pd.ExcelWriter(g_io, engine="openpyxl") as writer:
-        st.session_state["accumulated_garam"].to_excel(writer, index=False)
-      zip_file.writestr("가람식품_통합누적_발주서.xlsx", g_io.getvalue())
-
-    if not st.session_state["accumulated_kistic"].empty:
-      k_io = io.BytesIO()
-      with pd.ExcelWriter(k_io, engine="openpyxl") as writer:
-        st.session_state["accumulated_kistic"].to_excel(writer, index=False)
-      zip_file.writestr("키스틱_통합누적_발주서.xlsx", k_io.getvalue())
-
-    if not st.session_state["accumulated_frozen"].empty:
-      f_io = io.BytesIO()
-      with pd.ExcelWriter(f_io, engine="openpyxl") as writer:
-        st.session_state["accumulated_frozen"].to_excel(writer, index=False)
-      zip_file.writestr("냉동식품_통합누적_발주서.xlsx", f_io.getvalue())
-
-  zip_buffer.seek(0)
-
-  st.download_button(
-      label="📥 발주서 압축파일 다운로드",
-      data=zip_buffer,
-      file_name="마켓지니_전체누적_통합발주서.zip",
-      mime="application/zip",
   )
 
 with col_btn3:
@@ -580,13 +553,57 @@ if run_clicked:
           )
 
         st.success(
-            "✨ 발주서 내 표기된 날짜 기준으로 데이터가 성공적으로 누적되었습니다!"
+            "✨ 발주서 변환 및 날짜 반영(YYYYMMDD)이 완료되었습니다! 아래 다운로드"
+            " 버튼을 눌러주세요."
         )
       else:
         st.info("새롭게 반영할 신규 데이터가 없습니다.")
 
     except Exception as e:
       st.error(f"파일 처리 중 오류가 발생했습니다: {e}")
+
+# 💡 다운로드 버튼 위치 이동 (변환 버튼 실행 후 즉시 누적 데이터가 압축 파일에 반영되도록 구조 개선)
+st.markdown("---")
+st.subheader("3. 변환된 발주서 다운로드")
+
+zip_buffer = io.BytesIO()
+with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+  if (
+      "accumulated_garam" in st.session_state
+      and not st.session_state["accumulated_garam"].empty
+  ):
+    g_io = io.BytesIO()
+    with pd.ExcelWriter(g_io, engine="openpyxl") as writer:
+      st.session_state["accumulated_garam"].to_excel(writer, index=False)
+    zip_file.writestr("가람식품_통합누적_발주서.xlsx", g_io.getvalue())
+
+  if (
+      "accumulated_kistic" in st.session_state
+      and not st.session_state["accumulated_kistic"].empty
+  ):
+    k_io = io.BytesIO()
+    with pd.ExcelWriter(k_io, engine="openpyxl") as writer:
+      st.session_state["accumulated_kistic"].to_excel(writer, index=False)
+    zip_file.writestr("키스틱_통합누적_발주서.xlsx", k_io.getvalue())
+
+  if (
+      "accumulated_frozen" in st.session_state
+      and not st.session_state["accumulated_frozen"].empty
+  ):
+    f_io = io.BytesIO()
+    with pd.ExcelWriter(f_io, engine="openpyxl") as writer:
+      st.session_state["accumulated_frozen"].to_excel(writer, index=False)
+    zip_file.writestr("냉동식품_통합누적_발주서.xlsx", f_io.getvalue())
+
+zip_buffer.seek(0)
+
+st.download_button(
+    label="📥 발주서 압축파일 다운로드 (ZIP)",
+    data=zip_buffer,
+    file_name="마켓지니_전체누적_통합발주서.zip",
+    mime="application/zip",
+)
+
 
 # --- [플랫폼별 누적 매출 및 순수익 현황 대시보드] ---
 st.markdown("---")
