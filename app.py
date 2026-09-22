@@ -1,4 +1,5 @@
 import io
+import zipfile
 import pandas as pd
 import streamlit as st
 
@@ -8,10 +9,12 @@ st.set_page_config(
 
 st.title("📦 마켓지니 스마트 발주서 변환기")
 st.write(
-    "샵모아와 올웨이즈 발주서 파일을 업로드하면 3가지 공급처 양식으로 자동 분할 및 변환됩니다."
+    "샵모아와 올웨이즈 발주서 파일을 업로드한 후 실행 버튼을 누르면, 3개 공급처별 발주서가 담긴 ZIP 압축파일을 생성합니다."
 )
 
-# 파일 업로드 위젯
+st.markdown("---")
+
+# 1. 파일 업로드 섹션
 st.subheader("1. 발주서 파일 업로드")
 shopmoa_file = st.file_uploader(
     "샵모아 발주서 파일 업로드 (.xlsx)", type=["xlsx", "xls"], key="shopmoa"
@@ -24,7 +27,7 @@ always_file = st.file_uploader(
 def process_custom_orders(shopmoa_df, always_df):
   frames = []
 
-  # 1. 샵모아 데이터 표준화
+  # 샵모아 데이터 표준화
   if shopmoa_df is not None and not shopmoa_df.empty:
     s_df = shopmoa_df.copy()
     s_df["수령자이름"] = s_df.get("수취인명", "")
@@ -41,7 +44,7 @@ def process_custom_orders(shopmoa_df, always_df):
     s_df["주문번호"] = s_df.get("주문번호", "")
     frames.append(s_df)
 
-  # 2. 올웨이즈 데이터 표준화
+  # 올웨이즈 데이터 표준화 (옵션명에서 상품명 추출)
   if always_df is not None and not always_df.empty:
     a_df = always_df.copy()
     a_df["수령자이름"] = a_df.get("수령인", "")
@@ -59,7 +62,7 @@ def process_custom_orders(shopmoa_df, always_df):
     frames.append(a_df)
 
   if not frames:
-    return None, None, None
+    return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
   combined = pd.concat(frames, ignore_index=True)
 
@@ -135,7 +138,7 @@ def process_custom_orders(shopmoa_df, always_df):
     elif "김말이" in p_name:
       new_row = row.copy()
       new_row["상품명"] = "김말이튀김400g"
-      new_row["상품수량"] = qty * 3  # 기본 1세트당 팩수 곱하기 (3팩, 6팩 등)
+      new_row["상품수량"] = qty * 3  # 기본 1세트당 3팩 곱하기
       frozen_rows.append(new_row)
 
   garam_df = pd.DataFrame(garam_rows) if garam_rows else pd.DataFrame()
@@ -145,69 +148,55 @@ def process_custom_orders(shopmoa_df, always_df):
   return garam_df, kistic_df, frozen_df
 
 
-def to_excel_bytes(df):
-  output = io.BytesIO()
-  with pd.ExcelWriter(output, engine="openpyxl") as writer:
-    df.to_excel(writer, index=False)
-  return output.getvalue()
+# 2. 실행 버튼 및 압축 다운로드 섹션
+st.subheader("2. 맞춤형 발주서 변환 실행")
 
+if st.button("🚀 발주서 변환 및 압축파일 생성하기", type="primary"):
+  if shopmoa_file is None and always_file is None:
+    st.warning("최소 한 개 이상의 발주서 파일을 업로드해 주세요.")
+  else:
+    try:
+      s_df = pd.read_excel(shopmoa_file) if shopmoa_file else None
+      a_df = pd.read_excel(always_file) if always_file else None
 
-# 파일이 모두 업로드되었을 때 변환 및 다운로드 실행
-if shopmoa_file is not None or always_file is not None:
-  st.subheader("2. 발주서 변환 결과")
+      garam_df, kistic_df, frozen_df = process_custom_orders(s_df, a_df)
 
-  try:
-    s_df = pd.read_excel(shopmoa_file) if shopmoa_file else None
-    a_df = pd.read_excel(always_file) if always_file else None
+      # 메모리에 ZIP 파일 생성
+      zip_buffer = io.BytesIO()
+      with zipfile.ZipFile(
+          zip_buffer, "w", zipfile.ZIP_DEFLATED
+      ) as zip_file:
+        if not garam_df.empty:
+          g_io = io.BytesIO()
+          with pd.ExcelWriter(g_io, engine="openpyxl") as writer:
+            garam_df.to_excel(writer, index=False)
+          zip_file.writestr("가람식품_발주서.xlsx", g_io.getvalue())
 
-    garam_df, kistic_df, frozen_df = process_custom_orders(s_df, a_df)
+        if not kistic_df.empty:
+          k_io = io.BytesIO()
+          with pd.ExcelWriter(k_io, engine="openpyxl") as writer:
+            kistic_df.to_excel(writer, index=False)
+          zip_file.writestr("키스틱_발주서.xlsx", k_io.getvalue())
 
-    col1, col2, col3 = st.columns(3)
+        if not frozen_df.empty:
+          f_io = io.BytesIO()
+          with pd.ExcelWriter(f_io, engine="openpyxl") as writer:
+            frozen_df.to_excel(writer, index=False)
+          zip_file.writestr("냉동식품_발주서.xlsx", f_io.getvalue())
 
-    with col1:
-      st.markdown("### 1. 가람식품")
-      if not garam_df.empty:
-        st.success(f"데이터 {len(garam_df)}건 생성됨")
-        st.download_button(
-            label="가람식품 발주서 다운로드",
-            data=to_excel_bytes(garam_df),
-            file_name="가람식품_발주서.xlsx",
-            mime=(
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            ),
-        )
-      else:
-        st.info("데이터 없음")
+      zip_buffer.seek(0)
 
-    with col2:
-      st.markdown("### 2. 키스틱류")
-      if not kistic_df.empty:
-        st.success(f"데이터 {len(kistic_df)}건 생성됨")
-        st.download_button(
-            label="키스틱류 발주서 다운로드",
-            data=to_excel_bytes(kistic_df),
-            file_name="키스틱_발주서.xlsx",
-            mime=(
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            ),
-        )
-      else:
-        st.info("데이터 없음")
+      st.success(
+          "✨ 발주서 변환이 완료되었습니다! 아래 버튼을 눌러 통합 압축파일을"
+          " 다운로드하세요."
+      )
 
-    with col3:
-      st.markdown("### 3. 냉동식품류")
-      if not frozen_df.empty:
-        st.success(f"데이터 {len(frozen_df)}건 생성됨")
-        st.download_button(
-            label="냉동식품류 발주서 다운로드",
-            data=to_excel_bytes(frozen_df),
-            file_name="냉동식품_발주서.xlsx",
-            mime=(
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            ),
-        )
-      else:
-        st.info("데이터 없음")
+      st.download_button(
+          label="📥 3개 공급처 발주서 ZIP 압축파일 다운로드",
+          data=zip_buffer,
+          file_name="마켓지니_통합발주서.zip",
+          mime="application/zip",
+      )
 
-  except Exception as e:
-    st.error(f"파일 처리 중 오류가 발생했습니다: {e}")
+    except Exception as e:
+      st.error(f"파일 처리 중 오류가 발생했습니다: {e}")
