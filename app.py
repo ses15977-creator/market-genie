@@ -20,18 +20,45 @@ if "accumulated_frozen" not in st.session_state:
 
 st.title("📦 마켓지니 판매관리 프로그램")
 st.write(
-    "샵모아와 올웨이즈 발주서 파일을 업로드하면, 지정된 단가·배송비·판매가 기준에 맞춘 공급처별 발주서와 **플랫폼별 누적 매출 및 순수익 현황**을 제공합니다."
+    "발주서 파일을 업로드하면, 플랫폼별 수수료율에 따른 매출 및 순수익을 분석하고"
+    " 공급처별 통합 발주서를 생성합니다."
 )
 
 st.markdown("---")
 
-# 1. 파일 업로드 섹션 (1줄 좌우 배치)
+# 0. 플랫폼별 수수료율 설정 사이드바 또는 상단 설정 영역
+st.subheader("⚙️ 플랫폼 수수료율 설정 (%)")
+col_f1, col_f2, col_f3, col_f4, col_f5 = st.columns(5)
+with col_f1:
+  fee_smart = st.number_input("스마트스토어", value=5.80, step=0.1, format="%.2f")
+with col_f2:
+  fee_always = st.number_input("올웨이즈", value=5.50, step=0.1, format="%.2f")
+with col_f3:
+  fee_coupang = st.number_input("쿠팡", value=10.80, step=0.1, format="%.2f")
+with col_f4:
+  fee_gmarket = st.number_input("지마켓", value=13.00, step=0.1, format="%.2f")
+with col_f5:
+  fee_auction = st.number_input("옥션", value=13.00, step=0.1, format="%.2f")
+
+fee_rates = {
+    "스마트스토어": fee_smart / 100.0,
+    "네이버": fee_smart / 100.0,
+    "올웨이즈": fee_always / 100.0,
+    "쿠팡": fee_coupang / 100.0,
+    "지마켓": fee_gmarket / 100.0,
+    "G마켓": fee_gmarket / 100.0,
+    "옥션": fee_auction / 100.0,
+}
+
+st.markdown("---")
+
+# 1. 파일 업로드 섹션
 st.subheader("1. 발주서 파일 업로드")
 col1, col2 = st.columns(2)
 
 with col1:
   shopmoa_file = st.file_uploader(
-      "샵모아 발주서 파일 (.xlsx)", type=["xlsx", "xls"], key="shopmoa"
+      "샵모아 / 통합 발주서 파일 (.xlsx)", type=["xlsx", "xls"], key="shopmoa"
   )
 
 with col2:
@@ -40,8 +67,23 @@ with col2:
   )
 
 
+def detect_platform(row, default_channel):
+  """업로드된 데이터 내에서 판매처(플랫폼) 명칭을 감지합니다."""
+  # 컬럼 탐색
+  for col in row.index:
+    val_str = str(row[col])
+    for p_name in ["쿠팡", "스마트스토어", "네이버", "지마켓", "G마켓", "옥션", "올웨이즈"]:
+      if p_name in val_str or p_name in str(col):
+        if "네이버" in p_name:
+          return "스마트스토어"
+        if "G마켓" in p_name:
+          return "지마켓"
+        return p_name
+  return default_channel
+
+
 def calculate_item_finance(product_name, option_name, channel):
-  """사용자 지정 단가, 배송비, 판매가 기준 매출 및 원가/배송비 계산"""
+  """상품별 원가, 배송비, 판매가 계산 및 플랫폼 수수료 적용"""
   p_str = str(product_name)
   o_str = str(option_name)
   combined_text = p_str + " " + o_str
@@ -56,45 +98,45 @@ def calculate_item_finance(product_name, option_name, channel):
     shipping_fee = 2900
     if "40개" in combined_text:
       selling_price = 9900
-      cost_price = 113 * 40  # 4,520원 (부가세 포함)
+      cost_price = 113 * 40
       item_category = "키스틱 40개입"
     else:
       selling_price = 19900
-      cost_price = 113 * 100  # 11,300원 (부가세 포함)
+      cost_price = 113 * 100
       item_category = "키스틱 100개입"
 
   # 2. 고추잡채만두
   elif "만두" in combined_text or "고추잡채" in combined_text:
     shipping_fee = 3900
     selling_price = 13900
-    cost_price = 4700  # 부가세 포함
+    cost_price = 4700
     item_category = "고추잡채군만두 1.2kg"
 
-  # 3. 김말이튀김 (400g 3개 1세트 기준)
+  # 3. 김말이튀김
   elif "김말이" in combined_text:
     shipping_fee = 3900
     selling_price = 13900
-    cost_price = 1700 * 3  # 5,100원 (부가세 포함)
+    cost_price = 1700 * 3
     item_category = "김말이튀김 400g (3개 세트)"
 
-  # 4. 부산어묵바 (부가세 별도 -> 공급가 * 1.1)
+  # 4. 부산어묵바
   elif "어묵바" in combined_text:
     shipping_fee = 4300
     if "매콤달콤" in combined_text:
       selling_price = 19900
-      cost_price = int(560 * 1.1 * 10)  # 6,160원
+      cost_price = int(560 * 1.1 * 10)
       item_category = "매콤달콤 부산어묵바"
     elif "오징어야채" in combined_text:
       selling_price = 20900
-      cost_price = int(575 * 1.1 * 10)  # 6,325원
+      cost_price = int(575 * 1.1 * 10)
       item_category = "오징어야채 부산어묵바"
     elif "체다치즈" in combined_text:
       selling_price = 21900
-      cost_price = int(646 * 1.1 * 10)  # 7,106원
+      cost_price = int(646 * 1.1 * 10)
       item_category = "체다치즈 부산어묵바"
-    else:  # 오리지날
+    else:
       selling_price = 18900
-      cost_price = int(536 * 1.1 * 10)  # 5,896원
+      cost_price = int(536 * 1.1 * 10)
       item_category = "오리지날 부산어묵바"
   else:
     selling_price = 10000
@@ -102,8 +144,9 @@ def calculate_item_finance(product_name, option_name, channel):
     shipping_fee = 3000
     item_category = "기타상품"
 
-  # 플랫폼 수수료 (판매가의 10% 가정 또는 표준 수수료)
-  platform_fee = selling_price * 0.10
+  # 선택된 플랫폼별 수수료율 적용
+  rate = fee_rates.get(channel, 0.10)
+  platform_fee = selling_price * rate
   net_profit = selling_price - cost_price - shipping_fee - platform_fee
 
   return {
@@ -121,11 +164,27 @@ def process_custom_orders(shopmoa_df, always_df):
   sales_data_list = []
   date_str = datetime.now().strftime("%Y-%m-%d")
 
-  def parse_dataframe(df, channel_name):
+  def parse_dataframe(df, default_channel_name):
     if df is None or df.empty:
       return
     for _, row in df.iterrows():
-      if channel_name == "샵모아":
+      # 파일 내부에서 실제 판매처 컬럼 확인 시도
+      detected_channel = default_channel_name
+      for col in ["판매처", "쇼핑몰", "채널", "사이트"]:
+        if col in row and pd.notna(row[col]):
+          val = str(row[col])
+          if "쿠팡" in val:
+            detected_channel = "쿠팡"
+          elif "스마트스토어" in val or "네이버" in val:
+            detected_channel = "스마트스토어"
+          elif "지마켓" in val or "G마켓" in val:
+            detected_channel = "지마켓"
+          elif "옥션" in val:
+            detected_channel = "옥션"
+          elif "올웨이즈" in val:
+            detected_channel = "올웨이즈"
+
+      if default_channel_name == "샵모아":
         sname = row.get("수취인명", "")
         phone = row.get("수취인 전화번호", "")
         mobile = row.get("수취인 핸드폰번호", "")
@@ -148,12 +207,12 @@ def process_custom_orders(shopmoa_df, always_df):
         msg = ""
         order_id = row.get("주문아이디", "")
 
-      fin = calculate_item_finance(p_name, opt_name, channel_name)
+      fin = calculate_item_finance(p_name, opt_name, detected_channel)
 
       for _ in range(max(1, qty)):
         sales_data_list.append({
             "업로드일자": date_str,
-            "판매처": channel_name,
+            "판매처": detected_channel,
             "주문번호": str(order_id),
             "상품명": fin["카테고리"],
             "판매가": fin["판매가"],
@@ -175,7 +234,7 @@ def process_custom_orders(shopmoa_df, always_df):
           "배송메세지1": msg,
           "주문번호": order_id,
           "주문일": date_str,
-          "판매처": channel_name,
+          "판매처": detected_channel,
       }
       frames.append(base_row)
 
@@ -239,7 +298,7 @@ def process_custom_orders(shopmoa_df, always_df):
           "품절": "",
           "배송 보류": "",
           "상품명": "",
-          "판매처": "",
+          "판매처": row["판매처"],
           "주문번호": row["주문번호"],
           "발주일": "",
           "관리번호": "",
@@ -390,7 +449,6 @@ if run_clicked:
           process_custom_orders(s_df, a_df)
       )
 
-      # 세션 상태에 데이터 누적 합산
       if not sales_df.empty:
         st.session_state["accumulated_sales"] = pd.concat(
             [st.session_state["accumulated_sales"], sales_df], ignore_index=True
@@ -461,7 +519,6 @@ if not acc_sales.empty:
   )
   st.dataframe(platform_summary, use_container_width=True)
 
-  # 일자별 누적 추이 요약
   st.markdown("##### 📅 업로드 일자별 누적 요약")
   date_summary = (
       acc_sales.groupby("업로드일자")
@@ -474,7 +531,6 @@ if not acc_sales.empty:
   )
   st.dataframe(date_summary, use_container_width=True)
 
-  # 누적 발주서 ZIP 파일 생성 버튼
   zip_buffer = io.BytesIO()
   with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
     if not st.session_state["accumulated_garam"].empty:
