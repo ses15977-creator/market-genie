@@ -13,7 +13,6 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-    /* 특정 버튼을 빨간색으로 스타일링 (고유 키 기반 또는 다운로드 버튼 대상) */
     div.stDownloadButton > button {
         background-color: #ff4b4b !important;
         color: white !important;
@@ -281,7 +280,7 @@ def process_file_data(df, default_channel_name):
   return frames, sales_data_list
 
 
-# 2. 실행 버튼 및 압축 다운로드 섹션 (버튼 나란히 배치)
+# 2. 실행 버튼 및 압축 다운로드 섹션
 st.markdown("---")
 st.subheader("2. 맞춤형 발주서 변환 및 누적 수익 분석 실행")
 
@@ -293,7 +292,6 @@ with col_btn1:
   )
 
 with col_btn2:
-  # 🔴 [요청 반영] 다운로드 버튼을 변환 버튼 오른쪽에 배치 및 이름 변경
   zip_buffer = io.BytesIO()
   with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
     if not st.session_state["accumulated_garam"].empty:
@@ -351,7 +349,8 @@ if run_clicked:
       for f in all_shopmoa_files:
         if f is not None:
           f_bytes = f.getvalue()
-          f_hash = hashlib.md5(f_bytes).hexdigest()
+          # 💡 파일 이름과 바이트를 조합하여 해시 생성 (날짜별로 동일한 내부 구조 파일명 구별 가능하도록 보완)
+          f_hash = hashlib.md5(f.name.encode("utf-8") + f_bytes).hexdigest()
           if f_hash in st.session_state["uploaded_file_hashes"]:
             st.info(f"ℹ️ 이미 업로드된 파일은 제외되었습니다: {f.name}")
             continue
@@ -365,7 +364,7 @@ if run_clicked:
       for f in all_always_files:
         if f is not None:
           f_bytes = f.getvalue()
-          f_hash = hashlib.md5(f_bytes).hexdigest()
+          f_hash = hashlib.md5(f.name.encode("utf-8") + f_bytes).hexdigest()
           if f_hash in st.session_state["uploaded_file_hashes"]:
             st.info(f"ℹ️ 이미 업로드된 파일은 제외되었습니다: {f.name}")
             continue
@@ -380,6 +379,7 @@ if run_clicked:
         new_sales_df = pd.DataFrame(new_sales_list)
         new_combined_df = pd.DataFrame(new_frames)
 
+        # 💡 누적 데이터 결합 및 중복제거 조건 완화 (주문번호 + 상품명 + 업로드일자 기준으로 분리 반영되도록 함)
         if st.session_state["accumulated_sales"].empty:
           st.session_state["accumulated_sales"] = new_sales_df
         else:
@@ -390,7 +390,7 @@ if run_clicked:
 
         if "주문번호" in st.session_state["accumulated_sales"].columns:
           st.session_state["accumulated_sales"].drop_duplicates(
-              subset=["주문번호", "판매가", "상품명"],
+              subset=["주문번호", "업로드일자", "상품명"],
               keep="first",
               inplace=True,
           )
@@ -421,7 +421,7 @@ if run_clicked:
                 "품명": "",
                 "판매처": row["판매처"],
                 "주문번호": row["주문번호"],
-                "주문일": order_date,  # 날짜 누락 방지 반영
+                "주문일": order_date,
                 "판매가": "",
                 "정산금액": "",
                 "거래처코드": 16,
@@ -443,7 +443,7 @@ if run_clicked:
                 "상품명": "",
                 "판매처": row["판매처"],
                 "주문번호": row["주문번호"],
-                "발주일": order_date,  # 날짜 누락 방지 반영
+                "발주일": order_date,
                 "관리번호": "",
                 "상태": "",
                 "송장번호": "",
@@ -466,7 +466,7 @@ if run_clicked:
               r_copy["품명"] = target_name
               garam_rows.append(r_copy)
 
-          # 2. 키스틱 (오류 수정 및 정밀 매핑)
+          # 2. 키스틱
           elif "키스틱" in p_name or "키스틱" in opt_name:
             is_40 = "40개" in p_name or "40개" in opt_name
             base_name = str(row["원격_받는분성명"])
@@ -492,14 +492,14 @@ if run_clicked:
               r_copy["상품명"] = "키스틱 15g x 100개"
               kistic_rows.append(r_copy)
 
-          # 3. 고추잡채만두 (냉동식품 오류 수정)
+          # 3. 고추잡채만두
           elif "만두" in p_name or "고추잡채" in p_name:
             base_name = str(row["원격_받는분성명"])
             r_copy = create_standard_row(base_name, qty)
             r_copy["상품명"] = "더 바삭한 중화 고추잡채 군만두 1.2kg"
             frozen_rows.append(r_copy)
 
-          # 4. 김말이튀김 (냉동식품 오류 수정)
+          # 4. 김말이튀김
           elif "김말이" in p_name or "김말이" in opt_name:
             base_name = str(row["원격_받는분성명"])
             r_copy = create_standard_row(base_name, qty)
@@ -553,7 +553,9 @@ if run_clicked:
               [st.session_state["accumulated_garam"], g_df], ignore_index=True
           )
           st.session_state["accumulated_garam"].drop_duplicates(
-              subset=["주문번호", "받는분성명", "품명"], keep="first", inplace=True
+              subset=["주문번호", "주문일", "받는분성명", "품명"],
+              keep="first",
+              inplace=True,
           )
 
         if kistic_rows:
@@ -562,7 +564,7 @@ if run_clicked:
               [st.session_state["accumulated_kistic"], k_df], ignore_index=True
           )
           st.session_state["accumulated_kistic"].drop_duplicates(
-              subset=["주문번호", "수령자이름", "상품명"],
+              subset=["주문번호", "발주일", "수령자이름", "상품명"],
               keep="first",
               inplace=True,
           )
@@ -573,13 +575,13 @@ if run_clicked:
               [st.session_state["accumulated_frozen"], f_df], ignore_index=True
           )
           st.session_state["accumulated_frozen"].drop_duplicates(
-              subset=["주문번호", "수령자이름", "상품명"],
+              subset=["주문번호", "발주일", "수령자이름", "상품명"],
               keep="first",
               inplace=True,
           )
 
         st.success(
-            "✨ 새로운 발주서 데이터가 성공적으로 반영 및 누적되었습니다!"
+            "✨ 21일 및 22일 데이터가 성공적으로 누적 반영되었습니다!"
         )
       else:
         st.info("새롭게 반영할 신규 데이터가 없습니다.")
@@ -644,7 +646,6 @@ if not acc_sales.empty:
   )
   st.dataframe(platform_summary, use_container_width=True)
 
-  # 📅 일별 / 주별 / 월별 누적 확인 탭 구성
   st.markdown("##### 📅 기간별(일별 / 주별 / 월별) 누적 매출 요약")
   tab_daily, tab_weekly, tab_monthly = st.tabs(["일별 요약", "주별 요약", "월별 요약"])
 
