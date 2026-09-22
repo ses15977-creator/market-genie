@@ -10,7 +10,7 @@ st.set_page_config(
 
 st.title("📦 마켓지니 판매관리 프로그램")
 st.write(
-    "샵모아와 올웨이즈 발주서 파일을 업로드한 후 실행 버튼을 누르면, 지정된 양식에 맞춘 3개 공급처별 발주서 파일이 담긴 ZIP 압축파일을 생성합니다."
+    "샵모아와 올웨이즈 발주서 파일을 업로드한 후 실행 버튼을 누르면, 지정된 양식에 맞춘 3개 공급처별 발주서 파일과 당일 매출·순수익 현황을 제공합니다."
 )
 
 st.markdown("---")
@@ -32,6 +32,7 @@ with col2:
 
 def process_custom_orders(shopmoa_df, always_df):
   frames = []
+  raw_sales_frames = []
 
   # 현재 날짜 스트링 생성 (YYYYMMDD 형식, 가람발주서용)
   date_str = datetime.now().strftime("%Y%m%d")
@@ -53,6 +54,16 @@ def process_custom_orders(shopmoa_df, always_df):
     s_df["주문번호"] = s_df.get("주문번호", "")
     s_df["주문일"] = date_str
     s_df["판매처"] = s_df.get("사이트", "샵모아")
+
+    # 매출 집계를 위한 컬럼 확보 (판매가, 정산금액)
+    s_df["매출_판매가"] = pd.to_numeric(
+        s_df.get("판매가", 0), errors="coerce"
+    ).fillna(0)
+    s_df["매출_정산금액"] = pd.to_numeric(
+        s_df.get("정산금액", 0), errors="coerce"
+    ).fillna(0)
+    raw_sales_frames.append(s_df)
+
     frames.append(s_df)
 
   # 올웨이즈 데이터 표준화
@@ -72,12 +83,33 @@ def process_custom_orders(shopmoa_df, always_df):
     a_df["주문번호"] = a_df.get("주문아이디", "")
     a_df["주문일"] = date_str
     a_df["판매처"] = "올웨이즈"
+
+    # 올웨이즈의 경우 판매가/정산금액 컬럼이 다를 수 있으므로 안전하게 처리
+    a_df["매출_판매가"] = pd.to_numeric(
+        a_df.get("판매가", a_df.get("결제금액", 0)), errors="coerce"
+    ).fillna(0)
+    a_df["매출_정산금액"] = pd.to_numeric(
+        a_df.get("정산금액", a_df.get("공급가액", 0)), errors="coerce"
+    ).fillna(0)
+    raw_sales_frames.append(a_df)
+
     frames.append(a_df)
 
   if not frames:
-    return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), date_str
+    return (
+        pd.DataFrame(),
+        pd.DataFrame(),
+        pd.DataFrame(),
+        pd.DataFrame(),
+        date_str,
+    )
 
   combined = pd.concat(frames, ignore_index=True)
+  sales_combined = (
+      pd.concat(raw_sales_frames, ignore_index=True)
+      if raw_sales_frames
+      else pd.DataFrame()
+  )
 
   garam_rows = []
   kistic_rows = []
@@ -152,7 +184,7 @@ def process_custom_orders(shopmoa_df, always_df):
         garam_rows.append(r_copy)
 
     # 2. 키스틱류 분류
-    elif "키ส틱" in p_name or "키스틱" in opt_name:
+    elif "키스틱" in p_name or "키스틱" in opt_name:
       is_40 = "40개" in p_name or "40개" in opt_name
       base_name = str(row["원격_받는분성명"])
 
@@ -250,14 +282,14 @@ def process_custom_orders(shopmoa_df, always_df):
       else pd.DataFrame(columns=kistic_cols)
   )
 
-  return garam_df, kistic_df, frozen_df, date_str
+  return garam_df, kistic_df, frozen_df, sales_combined, date_str
 
 
 # 2. 실행 버튼 및 압축 다운로드 섹션
 st.markdown("---")
-st.subheader("2. 맞춤형 발주서 변환 실행")
+st.subheader("2. 맞춤형 발주서 변환 및 매출 분석 실행")
 
-if st.button("🚀 발주서 변환 및 압축파일 생성하기", type="primary"):
+if st.button("🚀 발주서 변환 및 매출 현황 분석하기", type="primary"):
   if shopmoa_file is None and always_file is None:
     st.warning("최소 한 개 이상의 발주서 파일을 업로드해 주세요.")
   else:
@@ -265,9 +297,44 @@ if st.button("🚀 발주서 변환 및 압축파일 생성하기", type="primar
       s_df = pd.read_excel(shopmoa_file) if shopmoa_file else None
       a_df = pd.read_excel(always_file) if always_file else None
 
-      garam_df, kistic_df, frozen_df, date_str = process_custom_orders(
-          s_df, a_df
+      garam_df, kistic_df, frozen_df, sales_df, date_str = (
+          process_custom_orders(s_df, a_df)
       )
+
+      # --- [매출 및 순수익 현황 대시보드] ---
+      st.markdown("---")
+      st.subheader(f"📊 [{date_str}] 당일 매출 및 순수익 현황")
+
+      if not sales_df.empty:
+        total_orders = len(sales_df)
+        total_revenue = sales_df["매출_판매가"].sum()
+        total_settle = sales_df["매출_정산금액"].sum()
+        # 정산금액이 없는 경우 판매가의 80% 등으로 가정하거나 정산금액 합산 표시
+        estimated_profit = (
+            total_settle if total_settle > 0 else total_revenue * 0.8
+        )
+
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("총 주문 건수", f"{total_orders:,} 건")
+        m2.metric("총 판매 매출액", f"{total_revenue:,.0f} 원")
+        m3.metric("총 정산금액", f"{total_settle:,.0f} 원")
+        m4.metric("예상 순수익", f"{estimated_profit:,.0f} 원")
+
+        # 판매처별 매출 요약
+        if "판매처" in sales_df.columns:
+          st.markdown("##### 🛒 판매처별 요약")
+          channel_summary = (
+              sales_df.groupby("판매처")
+              .agg(
+                  주문건수=("주문번호", "count"),
+                  총매출액=("매출_판매가", "sum"),
+                  총정산액=("매출_정산금액", "sum"),
+              )
+              .reset_index()
+          )
+          st.dataframe(channel_summary, use_container_width=True)
+      else:
+        st.info("분석할 매출 데이터가 없습니다.")
 
       # 메모리에 ZIP 파일 생성 (파일명에 발주일자 반영)
       zip_buffer = io.BytesIO()
@@ -294,6 +361,7 @@ if st.button("🚀 발주서 변환 및 압축파일 생성하기", type="primar
 
       zip_buffer.seek(0)
 
+      st.markdown("---")
       st.success(
           f"✨ [{date_str}] 기준 발주서 변환이 완료되었습니다! 아래 버튼을 눌러"
           " 통합 압축파일을 다운로드하세요."
