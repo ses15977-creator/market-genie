@@ -206,7 +206,8 @@ def process_file_data(df, default_channel_name):
         detected_channel = "올웨이즈"
         break
 
-    file_date = None
+    # 💡 파일 내부 행 데이터에 표기된 날짜를 'YYYYMMDD' 형식으로 변환
+    row_date = None
     for date_col_candidate in [
         "주문일",
         "발주일",
@@ -217,11 +218,14 @@ def process_file_data(df, default_channel_name):
       if date_col_candidate in row and pd.notna(row[date_col_candidate]):
         parsed_d = pd.to_datetime(row[date_col_candidate], errors="coerce")
         if pd.notna(parsed_d):
-          file_date = parsed_d.strftime("%Y-%m-%d")
+          row_date = parsed_d.strftime("%Y%m%d")  # 💡 하이픈 없는 YYYYMMDD 형태
           break
 
-    if not file_date:
-      file_date = datetime.now().strftime("%Y-%m-%d")
+    if not row_date:
+      row_date = datetime.now().strftime("%Y%m%d")
+
+    # 순수 매출 통계용 대시보드 비교를 위한 YYYY-MM-DD 형식 별도 생성
+    dash_date = f"{row_date[:4]}-{row_date[4:6]}-{row_date[6:]}"
 
     if default_channel_name == "샵모아":
       sname = row.get("수취인명", "")
@@ -250,7 +254,7 @@ def process_file_data(df, default_channel_name):
 
     for _ in range(max(1, qty)):
       sales_data_list.append({
-          "업로드일자": file_date,
+          "업로드일자": dash_date,  # 매출 대시보드 집계용
           "판매처": detected_channel,
           "주문번호": order_id,
           "상품명": fin["카테고리"],
@@ -272,7 +276,7 @@ def process_file_data(df, default_channel_name):
         "상품수량": qty,
         "배송메세지1": msg,
         "주문번호": order_id,
-        "주문일": file_date,
+        "주문일": row_date,  # 💡 최종 발주서 파일에 기재될 YYYYMMDD 형태의 날짜
         "판매처": detected_channel,
     }
     frames.append(base_row)
@@ -349,7 +353,6 @@ if run_clicked:
       for f in all_shopmoa_files:
         if f is not None:
           f_bytes = f.getvalue()
-          # 💡 파일 이름과 바이트를 조합하여 해시 생성 (날짜별로 동일한 내부 구조 파일명 구별 가능하도록 보완)
           f_hash = hashlib.md5(f.name.encode("utf-8") + f_bytes).hexdigest()
           if f_hash in st.session_state["uploaded_file_hashes"]:
             st.info(f"ℹ️ 이미 업로드된 파일은 제외되었습니다: {f.name}")
@@ -379,7 +382,6 @@ if run_clicked:
         new_sales_df = pd.DataFrame(new_sales_list)
         new_combined_df = pd.DataFrame(new_frames)
 
-        # 💡 누적 데이터 결합 및 중복제거 조건 완화 (주문번호 + 상품명 + 업로드일자 기준으로 분리 반영되도록 함)
         if st.session_state["accumulated_sales"].empty:
           st.session_state["accumulated_sales"] = new_sales_df
         else:
@@ -449,7 +451,7 @@ if run_clicked:
                 "송장번호": "",
             }
 
-          # 1. 어묵바 (가람식품)
+          # 1. 어묵바
           if "어묵바" in p_name or "어묵바" in opt_name:
             target_name = "오리지날 부산어묵바 80g x 10개"
             if "매콤달콤" in opt_name or "매콤달콤" in p_name:
@@ -581,7 +583,7 @@ if run_clicked:
           )
 
         st.success(
-            "✨ 21일 및 22일 데이터가 성공적으로 누적 반영되었습니다!"
+            "✨ 발주서 내 표기된 날짜가 YYYYMMDD 형태로 변환되어 누적되었습니다!"
         )
       else:
         st.info("새롭게 반영할 신규 데이터가 없습니다.")
@@ -653,7 +655,7 @@ if not acc_sales.empty:
   temp_sales["dt"] = pd.to_datetime(temp_sales["업로드일자"], errors="coerce")
 
   with tab_daily:
-    st.markdown("**📆 일자별 누적 현황**")
+    st.markdown("**📆 파일 날짜별(일자별) 누적 현황**")
     date_summary = (
         temp_sales.groupby("업로드일자")
         .agg(
