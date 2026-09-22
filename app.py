@@ -10,7 +10,7 @@ st.set_page_config(
 
 st.title("📦 마켓지니 스마트 발주서 변환기")
 st.write(
-    "샵모아와 올웨이즈 발주서 파일을 업로드한 후 실행 버튼을 누르면, 날짜가 반영된 3개 공급처별 양식 파일이 담긴 ZIP 압축파일을 생성합니다."
+    "샵모아와 올웨이즈 발주서 파일을 업로드한 후 실행 버튼을 누르면, 지정된 양식에 맞춘 3개 공급처별 발주서 파일이 담긴 ZIP 압축파일을 생성합니다."
 )
 
 st.markdown("---")
@@ -28,7 +28,7 @@ always_file = st.file_uploader(
 def process_custom_orders(shopmoa_df, always_df):
   frames = []
 
-  # 현재 날짜 스트링 생성 (YYYYMMDD 형식, 예: 20260921)
+  # 현재 날짜 스트링 생성 (YYYYMMDD 형식, 가람발주서용)
   date_str = datetime.now().strftime("%Y%m%d")
 
   # 샵모아 데이터 표준화
@@ -83,7 +83,7 @@ def process_custom_orders(shopmoa_df, always_df):
     opt_name = str(row["옵션_원본"])
     qty = int(row["상품수량"])
 
-    # 1. 가람식품 양식 딕셔너리 구조 (거래처코드 16 고정)
+    # 1. 가람식품 양식 생성 함수 (거래처코드 16 고정)
     def create_garam_row(name, quantity):
       return {
           "받는분성명": name,
@@ -106,7 +106,7 @@ def process_custom_orders(shopmoa_df, always_df):
           "거래처코드": 16,
       }
 
-    # 2. 키스틱/냉동식품 양식 딕셔너리 구조
+    # 2. 키스틱 / 냉동식품 양식 생성 함수 (요청사항: 발주일, 판매처는 빈값으로 처리)
     def create_standard_row(name, quantity):
       return {
           "수령자이름": name,
@@ -115,15 +115,15 @@ def process_custom_orders(shopmoa_df, always_df):
           "수령자우편번호": row["원격_받는분우편번호"],
           "수령자주소": row["원격_받는분주소"],
           "상품수량": quantity,
-          "배송메모": row["배송메세지1"],
+          "배송메모": "",
           "제조사": "",
           "카테고리": "",
           "품절": "",
           "배송 보류": "",
           "상품명": "",
-          "판매처": row["판매처"],
+          "판매처": "",  # 판매처 비워둠
           "주문번호": row["주문번호"],
-          "발주일": row["주문일"],
+          "발주일": "",  # 발주일 비워둠
           "관리번호": "",
           "상태": "",
           "송장번호": "",
@@ -139,7 +139,6 @@ def process_custom_orders(shopmoa_df, always_df):
       elif "체다치즈" in opt_name or "체다치즈" in p_name:
         target_name = "체다치즈 부산어묵바 80g x 10개"
 
-      # 합배송 불가: 수량만큼 행 분리 및 수령자명 뒤 숫자 부여
       base_name = str(row["원격_받는분성명"])
       for i in range(qty):
         r_name = f"{base_name}{i+1}" if qty > 1 else base_name
