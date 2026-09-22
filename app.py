@@ -10,7 +10,7 @@ st.set_page_config(
 
 st.title("📦 마켓지니 판매관리 프로그램")
 st.write(
-    "샵모아와 올웨이즈 발주서 파일을 업로드한 후 실행 버튼을 누르면, 지정된 양식에 맞춘 3개 공급처별 발주서 파일과 당일 매출·순수익 현황을 제공합니다."
+    "샵모아와 올웨이즈 발주서 파일을 업로드하면, 지정된 단가·배송비·판매가 기준에 맞춘 공급처별 발주서와 **상세 매출 및 순수익 현황**을 제공합니다."
 )
 
 st.markdown("---")
@@ -30,123 +30,155 @@ with col2:
   )
 
 
+def calculate_item_finance(product_name, option_name, channel):
+  """사용자 지정 단가, 배송비, 판매가 기준 매출 및 원가/배송비 계산"""
+  p_str = str(product_name)
+  o_str = str(option_name)
+  combined_text = p_str + " " + o_str
+
+  selling_price = 0
+  cost_price = 0
+  shipping_fee = 0
+  item_category = "기타"
+
+  # 1. 키스틱
+  if "키스틱" in combined_text:
+    shipping_fee = 2900
+    if "40개" in combined_text:
+      selling_price = 9900
+      cost_price = 113 * 40  # 4,520원 (부가세 포함)
+      item_category = "키스틱 40개입"
+    else:
+      selling_price = 19900
+      cost_price = 113 * 100  # 11,300원 (부가세 포함)
+      item_category = "키스틱 100개입"
+
+  # 2. 고추잡채만두
+  elif "만두" in combined_text or "고추잡채" in combined_text:
+    shipping_fee = 3900
+    selling_price = 13900
+    cost_price = 4700  # 부가세 포함
+    item_category = "고추잡채군만두 1.2kg"
+
+  # 3. 김말이튀김 (400g 3개 1세트 기준)
+  elif "김말이" in combined_text:
+    shipping_fee = 3900
+    selling_price = 13900
+    cost_price = 1700 * 3  # 5,100원 (부가세 포함)
+    item_category = "김말이튀김 400g (3개 세트)"
+
+  # 4. 부산어묵바 (부가세 별도 -> 공급가 * 1.1)
+  elif "어묵바" in combined_text:
+    shipping_fee = 4300
+    if "매콤달콤" in combined_text:
+      selling_price = 19900
+      cost_price = int(560 * 1.1 * 10)  # 6,160원
+      item_category = "매콤달콤 부산어묵바"
+    elif "오징어야채" in combined_text:
+      selling_price = 20900
+      cost_price = int(575 * 1.1 * 10)  # 6,325원
+      item_category = "오징어야채 부산어묵바"
+    elif "체다치즈" in combined_text:
+      selling_price = 21900
+      cost_price = int(646 * 1.1 * 10)  # 7,106원
+      item_category = "체다치즈 부산어묵바"
+    else:  # 오리지날
+      selling_price = 18900
+      cost_price = int(536 * 1.1 * 10)  # 5,896원
+      item_category = "오리지날 부산어묵바"
+  else:
+    # 기본 방어 로직
+    selling_price = 10000
+    cost_price = 5000
+    shipping_fee = 3000
+    item_category = "기타상품"
+
+  # 플랫폼 수수료 (공개된 표준 플랫폼 수수료 약 10% 적용 또는 파일 내 정산금액 활용)
+  # 판매가의 10%를 플랫폼 수수료로 책정
+  platform_fee = selling_price * 0.10
+
+  # 순수익 = 판매가 - 원가 - 배송비 - 플랫폼수수료
+  net_profit = selling_price - cost_price - shipping_fee - platform_fee
+
+  return {
+      "카테고리": item_category,
+      "판매가": selling_price,
+      "원가": cost_price,
+      "배송비": shipping_fee,
+      "플랫폼수수료": platform_fee,
+      "순수익": net_profit,
+  }
+
+
 def process_custom_orders(shopmoa_df, always_df):
   frames = []
-  raw_sales_frames = []
-
-  # 현재 날짜 스트링 생성 (YYYYMMDD 형식, 가람발주서용)
+  sales_data_list = []
   date_str = datetime.now().strftime("%Y%m%d")
 
-  # 샵모아 데이터 표준화
-  if shopmoa_df is not None and not shopmoa_df.empty:
-    s_df = shopmoa_df.copy()
-    s_df["원격_받는분성명"] = (
-        s_df["수취인명"] if "수취인명" in s_df.columns else ""
-    )
-    s_df["원격_받는분전화번호"] = (
-        s_df["수취인 전화번호"] if "수취인 전화번호" in s_df.columns else ""
-    )
-    s_df["원격_받는분기타연락처"] = (
-        s_df["수취인 핸드폰번호"] if "수취인 핸드폰번호" in s_df.columns else ""
-    )
-    s_df["원격_받는분우편번호"] = (
-        s_df["우편번호"] if "우편번호" in s_df.columns else ""
-    )
-    s_df["원격_받는분주소"] = (
-        s_df["수취인주소"] if "수취인주소" in s_df.columns else ""
-    )
-    s_df["상품명_원본"] = s_df["상품명"] if "상품명" in s_df.columns else ""
-    s_df["옵션_원본"] = s_df["옵션"] if "옵션" in s_df.columns else ""
+  # 데이터 통합 처리 함수
+  def parse_dataframe(df, channel_name):
+    if df is None or df.empty:
+      return
+    for _, row in df.iterrows():
+      # 원본 데이터 추출
+      if channel_name == "샵모아":
+        sname = row.get("수취인명", "")
+        phone = row.get("수취인 전화번호", "")
+        mobile = row.get("수취인 핸드폰번호", "")
+        zipcode = row.get("우편번호", "")
+        address = row.get("수취인주소", "")
+        p_name = row.get("상품명", "")
+        opt_name = row.get("옵션", "")
+        qty = int(pd.to_numeric(row.get("수량", 1), errors="coerce"))
+        msg = row.get("배송메세지", "")
+        order_id = row.get("주문번호", "")
+      else:  # 올웨이즈
+        sname = row.get("수령인", "")
+        phone = row.get("수령인 연락처", "")
+        mobile = row.get("수령인 연락처", "")
+        zipcode = row.get("우편번호", "")
+        address = row.get("주소", "")
+        p_name = row.get("상품명", "")
+        opt_name = row.get("옵션", "")
+        qty = int(pd.to_numeric(row.get("수량", 1), errors="coerce"))
+        msg = ""
+        order_id = row.get("주문아이디", "")
 
-    if "수량" in s_df.columns:
-      s_df["상품수량"] = (
-          pd.to_numeric(s_df["수량"], errors="coerce").fillna(1).astype(int)
-      )
-    else:
-      s_df["상품수량"] = 1
+      # 금융/원가 정보 계산
+      fin = calculate_item_finance(p_name, opt_name, channel_name)
 
-    s_df["배송메세지1"] = (
-        s_df["배송메세지"] if "배송메세지" in s_df.columns else ""
-    )
-    s_df["주문번호"] = s_df["주문번호"] if "주문번호" in s_df.columns else ""
-    s_df["주문일"] = date_str
-    s_df["판매처"] = s_df["사이트"] if "사이트" in s_df.columns else "샵모아"
+      # 매출 집계 리스트에 추가 (수량 고려)
+      for _ in range(max(1, qty)):
+        sales_data_list.append({
+            "판매처": channel_name,
+            "주문번호": order_id,
+            "상품명": fin["카테고리"],
+            "판매가": fin["판매가"],
+            "원가": fin["원가"],
+            "배송비": fin["배송비"],
+            "플랫폼수수료": fin["플랫폼수수료"],
+            "순수익": fin["순수익"],
+        })
 
-    # 매출 집계를 위한 컬럼 확보 (판매가, 정산금액)
-    s_df["매출_판매가"] = (
-        pd.to_numeric(s_df["판매가"], errors["coerce"])
-        if "판매가" in s_df.columns
-        else 0
-    )
-    s_df["매출_판매가"] = s_df["매출_판매가"].fillna(0)
+      # 발주서용 데이터 행 구성
+      base_row = {
+          "원격_받는분성명": sname,
+          "원격_받는분전화번호": phone,
+          "원격_받는분기타연락처": mobile,
+          "원격_받는분우편번호": zipcode,
+          "원격_받는분주소": address,
+          "상품명_원본": p_name,
+          "옵션_원본": opt_name,
+          "상품수량": qty,
+          "배송메세지1": msg,
+          "주문번호": order_id,
+          "주문일": date_str,
+          "판매처": channel_name,
+      }
+      frames.append(base_row)
 
-    s_df["매출_정산금액"] = (
-        pd.to_numeric(s_df["정산금액"], errors="coerce")
-        if "정산금액" in s_df.columns
-        else 0
-    )
-    s_df["매출_정산금액"] = s_df["매출_정산금액"].fillna(0)
-
-    raw_sales_frames.append(s_df)
-    frames.append(s_df)
-
-  # 올웨이즈 데이터 표준화
-  if always_df is not None and not always_df.empty:
-    a_df = always_df.copy()
-    a_df["원격_받는분성명"] = a_df["수령인"] if "수령인" in a_df.columns else ""
-    a_df["원격_받는분전화번호"] = (
-        a_df["수령인 연락처"] if "수령인 연락처" in a_df.columns else ""
-    )
-    a_df["원격_받는분기타연락처"] = (
-        a_df["수령인 연락처"] if "수령인 연락처" in a_df.columns else ""
-    )
-    a_df["원격_받는분우편번호"] = (
-        a_df["우편번호"] if "우편번호" in a_df.columns else ""
-    )
-    a_df["원격_받는분주소"] = a_df["주소"] if "주소" in a_df.columns else ""
-    a_df["상품명_원본"] = a_df["상품명"] if "상품명" in a_df.columns else ""
-    a_df["옵션_원본"] = a_df["옵션"] if "옵션" in a_df.columns else ""
-
-    if "수량" in a_df.columns:
-      a_df["상품수량"] = (
-          pd.to_numeric(a_df["수량"], errors="coerce").fillna(1).astype(int)
-      )
-    else:
-      a_df["상품수량"] = 1
-
-    a_df["배송메세지1"] = ""
-    a_df["주문번호"] = (
-        a_df["주문아이디"] if "주문아이디" in a_df.columns else ""
-    )
-    a_df["주문일"] = date_str
-    a_df["판매처"] = "올웨이즈"
-
-    # 매출_판매가 확보
-    if "판매가" in a_df.columns:
-      a_df["매출_판매가"] = pd.to_numeric(
-          a_df["판매가"], errors="coerce"
-      ).fillna(0)
-    elif "결제금액" in a_df.columns:
-      a_df["매출_판매가"] = pd.to_numeric(
-          a_df["결제금액"], errors="coerce"
-      ).fillna(0)
-    else:
-      a_df["매출_판매가"] = 0
-
-    # 매출_정산금액 확보
-    if "정산금액" in a_df.columns:
-      a_df["매출_정산금액"] = pd.to_numeric(
-          a_df["정산금액"], errors="coerce"
-      ).fillna(0)
-    elif "공급가액" in a_df.columns:
-      a_df["매출_정산금액"] = pd.to_numeric(
-          a_df["공급가액"], errors="coerce"
-      ).fillna(0)
-    else:
-      a_df["매출_정산금액"] = 0
-
-    raw_sales_frames.append(a_df)
-    frames.append(a_df)
+  parse_dataframe(shopmoa_df, "샵모아")
+  parse_dataframe(always_df, "올웨이즈")
 
   if not frames:
     return (
@@ -157,12 +189,8 @@ def process_custom_orders(shopmoa_df, always_df):
         date_str,
     )
 
-  combined = pd.concat(frames, ignore_index=True)
-  sales_combined = (
-      pd.concat(raw_sales_frames, ignore_index=True)
-      if raw_sales_frames
-      else pd.DataFrame()
-  )
+  combined = pd.DataFrame(frames)
+  sales_df = pd.DataFrame(sales_data_list)
 
   garam_rows = []
   kistic_rows = []
@@ -217,7 +245,7 @@ def process_custom_orders(shopmoa_df, always_df):
           "송장번호": "",
       }
 
-    # 1. 가람식품 (부산어묵바류) 분류
+    # 1. 가람식품 (어묵바류) 분류
     if "어묵바" in p_name or "어묵바" in opt_name:
       target_name = "오리지날 부산어묵바 80g x 10개"
       if "매콤달콤" in opt_name or "매콤달콤" in p_name:
@@ -248,7 +276,6 @@ def process_custom_orders(shopmoa_df, always_df):
           r1 = create_standard_row(base_name, 1)
           r1["상품명"] = "키스틱 15g x 40개"
           kistic_rows.append(r1)
-
           r2 = create_standard_row(f"{base_name}2", 1)
           r2["상품명"] = "키스틱 15g x 100개"
           kistic_rows.append(r2)
@@ -261,7 +288,7 @@ def process_custom_orders(shopmoa_df, always_df):
         r_copy["상품명"] = "키스틱 15g x 100개"
         kistic_rows.append(r_copy)
 
-    # 3. 냉동식품류 (군만두, 김말이) 분류
+    # 3. 냉동식품류
     elif "만두" in p_name or "고추잡채" in p_name:
       base_name = str(row["원격_받는분성명"])
       r_copy = create_standard_row(base_name, qty)
@@ -331,14 +358,14 @@ def process_custom_orders(shopmoa_df, always_df):
       else pd.DataFrame(columns=kistic_cols)
   )
 
-  return garam_df, kistic_df, frozen_df, sales_combined, date_str
+  return garam_df, kistic_df, frozen_df, sales_df, date_str
 
 
 # 2. 실행 버튼 및 압축 다운로드 섹션
 st.markdown("---")
-st.subheader("2. 맞춤형 발주서 변환 및 매출 분석 실행")
+st.subheader("2. 맞춤형 발주서 변환 및 순수익 분석 실행")
 
-if st.button("🚀 발주서 변환 및 매출 현황 분석하기", type="primary"):
+if st.button("🚀 발주서 변환 및 매출·순수익 분석하기", type="primary"):
   if shopmoa_file is None and always_file is None:
     st.warning("최소 한 개 이상의 발주서 파일을 업로드해 주세요.")
   else:
@@ -352,34 +379,33 @@ if st.button("🚀 발주서 변환 및 매출 현황 분석하기", type="prima
 
       # --- [매출 및 순수익 현황 대시보드] ---
       st.markdown("---")
-      st.subheader(f"📊 [{date_str}] 당일 매출 및 순수익 현황")
+      st.subheader(f"📊 [{date_str}] 당일 매출 및 순수익 분석 현황")
 
       if not sales_df.empty:
         total_orders = len(sales_df)
-        total_revenue = sales_df["매출_판매가"].sum()
-        total_settle = sales_df["매출_정산금액"].sum()
-        estimated_profit = (
-            total_settle if total_settle > 0 else total_revenue * 0.8
-        )
+        total_revenue = sales_df["판매가"].sum()
+        total_cost = sales_df["원가"].sum()
+        total_shipping = sales_df["배송비"].sum()
+        total_platform_fee = sales_df["플랫폼수수료"].sum()
+        total_net_profit = sales_df["순수익"].sum()
 
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("총 주문 건수", f"{total_orders:,} 건")
         m2.metric("총 판매 매출액", f"{total_revenue:,.0f} 원")
-        m3.metric("총 정산금액", f"{total_settle:,.0f} 원")
-        m4.metric("예상 순수익", f"{estimated_profit:,.0f} 원")
+        m3.metric("총 원가+배송+수수료", f"{(total_cost + total_shipping + total_platform_fee):,.0f} 원")
+        m4.metric("당일 총 순수익", f"{total_net_profit:,.0f} 원", delta=f"마진율 {(total_net_profit/total_revenue*100):.1f}%" if total_revenue > 0 else "0%")
 
-        if "판매처" in sales_df.columns:
-          st.markdown("##### 🛒 판매처별 요약")
-          channel_summary = (
-              sales_df.groupby("판매처")
-              .agg(
-                  주문건수=("주문번호", "count"),
-                  총매출액=("매출_판매가", "sum"),
-                  총정산액=("매출_정산금액", "sum"),
-              )
-              .reset_index()
-          )
-          st.dataframe(channel_summary, use_container_width=True)
+        st.markdown("##### 🛒 상품별 판매 및 순수익 상세")
+        item_summary = (
+            sales_df.groupby("상품명")
+            .agg(
+                판매수량=("판매가", "count"),
+                총판매가=("판매가", "sum"),
+                총순수익=("순수익", "sum"),
+            )
+            .reset_index()
+        )
+        st.dataframe(item_summary, use_container_width=True)
       else:
         st.info("분석할 매출 데이터가 없습니다.")
 
@@ -410,8 +436,8 @@ if st.button("🚀 발주서 변환 및 매출 현황 분석하기", type="prima
 
       st.markdown("---")
       st.success(
-          f"✨ [{date_str}] 기준 발주서 변환이 완료되었습니다! 아래 버튼을 눌러"
-          " 통합 압축파일을 다운로드하세요."
+          f"✨ [{date_str}] 기준 발주서 변환 및 순수익 분석이 완료되었습니다!"
+          " 아래 버튼을 눌러 압축파일을 다운로드하세요."
       )
 
       st.download_button(
