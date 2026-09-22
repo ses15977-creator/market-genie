@@ -432,6 +432,9 @@ with col_btn1:
   )
 
 with col_btn2:
+  # 현재 날짜 가져오기
+  current_date_str = datetime.now().strftime("%Y-%m-%d")
+
   # 데이터가 있을 때만 압축 파일 생성 데이터를 구성하여 다운로드 버튼 활성화
   zip_buffer = io.BytesIO()
   with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
@@ -439,26 +442,32 @@ with col_btn2:
       g_io = io.BytesIO()
       with pd.ExcelWriter(g_io, engine="openpyxl") as writer:
         st.session_state["accumulated_garam"].to_excel(writer, index=False)
-      zip_file.writestr("가람식품_통합누적_발주서.xlsx", g_io.getvalue())
+      zip_file.writestr(
+          f"가람식품_통합누적_발주서_{current_date_str}.xlsx", g_io.getvalue()
+      )
 
     if not st.session_state["accumulated_kistic"].empty:
       k_io = io.BytesIO()
       with pd.ExcelWriter(k_io, engine="openpyxl") as writer:
         st.session_state["accumulated_kistic"].to_excel(writer, index=False)
-      zip_file.writestr("키스틱_통합누적_발주서.xlsx", k_io.getvalue())
+      zip_file.writestr(
+          f"키스틱_통합누적_발주서_{current_date_str}.xlsx", k_io.getvalue()
+      )
 
     if not st.session_state["accumulated_frozen"].empty:
       f_io = io.BytesIO()
       with pd.ExcelWriter(f_io, engine="openpyxl") as writer:
         st.session_state["accumulated_frozen"].to_excel(writer, index=False)
-      zip_file.writestr("냉동식품_통합누적_발주서.xlsx", f_io.getvalue())
+      zip_file.writestr(
+          f"냉동식품_통합누적_발주서_{current_date_str}.xlsx", f_io.getvalue()
+      )
 
   zip_buffer.seek(0)
 
   st.download_button(
       label="📥 누적 통합 발주서 ZIP 다운로드",
       data=zip_buffer,
-      file_name="마켓지니_전체누적_통합발주서.zip",
+      file_name=f"마켓지니_전체누적_통합발주서_{current_date_str}.zip",
       mime="application/zip",
   )
 
