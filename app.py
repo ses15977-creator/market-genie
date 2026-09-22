@@ -34,37 +34,39 @@ def process_custom_orders(shopmoa_df, always_df):
   # 샵모아 데이터 표준화
   if shopmoa_df is not None and not shopmoa_df.empty:
     s_df = shopmoa_df.copy()
-    s_df["수령자이름"] = s_df.get("수취인명", "")
-    s_df["수령자전화"] = s_df.get("수취인 전화번호", "")
-    s_df["수령자휴대폰"] = s_df.get("수취인 핸드폰번호", "")
-    s_df["수령자우편번호"] = s_df.get("우편번호", "")
-    s_df["수령자주소"] = s_df.get("수취인주소", "")
+    s_df["원격_받는분성명"] = s_df.get("수취인명", "")
+    s_df["원격_받는분전화번호"] = s_df.get("수취인 전화번호", "")
+    s_df["원격_받는분기타연락처"] = s_df.get("수취인 핸드폰번호", "")
+    s_df["원격_받는분우편번호"] = s_df.get("우편번호", "")
+    s_df["원격_받는분주소"] = s_df.get("수취인주소", "")
     s_df["상품명_원본"] = s_df.get("상품명", "")
     s_df["옵션_원본"] = s_df.get("옵션", "")
     s_df["상품수량"] = pd.to_numeric(s_df.get("수량", 1), errors="coerce").fillna(
         1
     )
-    s_df["배송메모"] = s_df.get("배송메세지", "")
+    s_df["배송메세지1"] = s_df.get("배송메세지", "")
     s_df["주문번호"] = s_df.get("주문번호", "")
-    s_df["발주일"] = date_str
+    s_df["주문일"] = date_str
+    s_df["판매처"] = s_df.get("사이트", "샵모아")
     frames.append(s_df)
 
   # 올웨이즈 데이터 표준화
   if always_df is not None and not always_df.empty:
     a_df = always_df.copy()
-    a_df["수령자이름"] = a_df.get("수령인", "")
-    a_df["수령자전화"] = a_df.get("수령인 연락처", "")
-    a_df["수령자휴대폰"] = a_df.get("수령인 연락처", "")
-    a_df["수령자우편번호"] = a_df.get("우편번호", "")
-    a_df["수령자주소"] = a_df.get("주소", "")
+    a_df["원격_받는분성명"] = a_df.get("수령인", "")
+    a_df["원격_받는분전화번호"] = a_df.get("수령인 연락처", "")
+    a_df["원격_받는분기타연락처"] = a_df.get("수령인 연락처", "")
+    a_df["원격_받는분우편번호"] = a_df.get("우편번호", "")
+    a_df["원격_받는분주소"] = a_df.get("주소", "")
     a_df["상품명_원본"] = a_df.get("상품명", "")
     a_df["옵션_원본"] = a_df.get("옵션", "")
     a_df["상품수량"] = pd.to_numeric(a_df.get("수량", 1), errors="coerce").fillna(
         1
     )
-    a_df["배송메모"] = ""
+    a_df["배송메세지1"] = ""
     a_df["주문번호"] = a_df.get("주문아이디", "")
-    a_df["발주일"] = date_str
+    a_df["주문일"] = date_str
+    a_df["판매처"] = "올웨이즈"
     frames.append(a_df)
 
   if not frames:
@@ -81,27 +83,53 @@ def process_custom_orders(shopmoa_df, always_df):
     opt_name = str(row["옵션_원본"])
     qty = int(row["상품수량"])
 
-    # 공통 기본 양식 필드 구성
-    base_dict = {
-        "수령자이름": row["수령자이름"],
-        "수령자전화": row["수령자전화"],
-        "수령자휴대폰": row["수령자휴대폰"],
-        "수령자우편번호": row["수령자우편번호"],
-        "수령자주소": row["수령자주소"],
-        "배송메모": row["배송메모"],
-        "제조사": "",
-        "카테고리": "",
-        "품절": "",
-        "배송 보류": "",
-        "판매처": "",
-        "주문번호": row["주문번호"],
-        "발주일": row["발주일"],
-        "관리번호": "",
-        "상태": "",
-        "송장번호": "",
-    }
+    # 1. 가람식품 양식 딕셔너리 구조 (요청하신 정확한 컬럼 순서 및 거래처코드 16 고정)
+    def create_garam_row(name, quantity):
+      return {
+          "받는분성명": name,
+          "받는분전화번호": row["원격_받는분전화번호"],
+          "받는분기타연락처": row["원격_받는분기타연락처"],
+          "받는분우편번호": row["원격_받는분우편번호"],
+          "받는분주소": row["원격_받는분주소"],
+          "내품수량": quantity,
+          "배송메세지1": row["배송메세지1"],
+          "출력일": "",
+          "운임구분": "",
+          "기본운임": "",
+          "고객사용번호": "",
+          "품명": "",
+          "판매처": row["판매처"],
+          "주문번호": row["주문번호"],
+          "주문일": row["주문일"],
+          "판매가": "",
+          "정산금액": "",
+          "거래처코드": 16,
+      }
 
-    # 1. 가람식품 (부산어묵바류)
+    # 2. 키스틱/냉동식품 양식 딕셔너리 구조
+    def create_standard_row(name, quantity):
+      return {
+          "수령자이름": name,
+          "수령자전화": row["원격_받는분전화번호"],
+          "수령자휴대폰": row["원격_받는분기타연락처"],
+          "수령자우편번호": row["원격_받는분우편번호"],
+          "수령자주소": row["원격_받는분주소"],
+          "상품수량": quantity,
+          "배송메모": row["배송메세지1"],
+          "제조사": "",
+          "카테고리": "",
+          "품절": "",
+          "배송 보류": "",
+          "상품명": "",
+          "판매처": row["판매처"],
+          "주문번호": row["주문번호"],
+          "발주일": row["주문일"],
+          "관리번호": "",
+          "상태": "",
+          "송장번호": "",
+      }
+
+    # 1. 가람식품 (부산어묵바류) 분류
     if "어묵바" in p_name or "어묵바" in opt_name:
       target_name = "오리지날 부산어묵바"
       if "매콤달콤" in opt_name or "매콤달콤" in p_name:
@@ -112,87 +140,76 @@ def process_custom_orders(shopmoa_df, always_df):
         target_name = "체다치즈 부산어묵바"
 
       # 합배송 불가: 수량만큼 행 분리 및 수령자명 뒤 숫자 부여
+      base_name = str(row["원격_받는분성명"])
       for i in range(qty):
-        r_copy = base_dict.copy()
-        if qty > 1:
-          r_copy["수령자이름"] = f"{row['수령자이름']}{i+1}"
-        r_copy["상품명"] = target_name
-        r_copy["상품수량"] = 1
-        r_copy[1] = 1  # 가람 양식 특유의 수량 필드 호환
+        r_name = f"{base_name}{i+1}" if qty > 1 else base_name
+        r_copy = create_garam_row(r_name, 1)
+        r_copy["품명"] = target_name
         garam_rows.append(r_copy)
 
-    # 2. 키스틱류
+    # 2. 키스틱류 분류
     elif "키스틱" in p_name or "키스틱" in opt_name:
       is_40 = "40개" in p_name or "40개" in opt_name
+      base_name = str(row["원격_받는분성명"])
 
       if is_40:
         if qty == 2:
-          r_copy = base_dict.copy()
+          r_copy = create_standard_row(base_name, 1)
           r_copy["상품명"] = "키스틱 15g x 100개"
-          r_copy["상품수량"] = 1
-          r_copy[1] = 1
           kistic_rows.append(r_copy)
         elif qty == 3:
-          r1 = base_dict.copy()
+          r1 = create_standard_row(base_name, 1)
           r1["상품명"] = "키스틱 15g x 40개"
-          r1["상품수량"] = 1
-          r1[1] = 1
           kistic_rows.append(r1)
 
-          r2 = base_dict.copy()
-          r2["수령자이름"] = f"{row['수령자이름']}2"
+          r2 = create_standard_row(f"{base_name}2", 1)
           r2["상품명"] = "키스틱 15g x 100개"
-          r2["상품수량"] = 1
-          r2[1] = 1
           kistic_rows.append(r2)
         else:
-          r_copy = base_dict.copy()
+          r_copy = create_standard_row(base_name, qty)
           r_copy["상품명"] = "키스틱 15g x 40개"
-          r_copy["상품수량"] = qty
-          r_copy[1] = qty
           kistic_rows.append(r_copy)
       else:
-        r_copy = base_dict.copy()
+        r_copy = create_standard_row(base_name, qty)
         r_copy["상품명"] = "키스틱 15g x 100개"
-        r_copy["상품수량"] = qty
-        r_copy[1] = qty
         kistic_rows.append(r_copy)
 
-    # 3. 냉동식품류 (군만두, 김말이)
+    # 3. 냉동식품류 (군만두, 김말이) 분류
     elif "만두" in p_name or "고추잡채" in p_name:
-      r_copy = base_dict.copy()
+      base_name = str(row["원격_받는분성명"])
+      r_copy = create_standard_row(base_name, qty)
       r_copy["상품명"] = "더 바삭한 중화 고추잡채 군만두 1.2kg"
-      r_copy["상품수량"] = qty
       frozen_rows.append(r_copy)
 
     elif "김말이" in p_name:
-      r_copy = base_dict.copy()
+      base_name = str(row["원격_받는분성명"])
+      r_copy = create_standard_row(base_name, qty * 3)
       r_copy["상품명"] = "김말이튀김400g"
-      r_copy["상품수량"] = qty * 3
       frozen_rows.append(r_copy)
 
-  # 최종 데이터프레임 변환 (요청하신 정확한 컬럼 순서 및 양식 유지)
+  # 컬럼 정의
   garam_cols = [
-      "수령자이름",
-      "수령자전화",
-      "수령자휴대폰",
-      "수령자우편번호",
-      "수령자주소",
-      1,
-      "배송메모",
-      "제조사",
-      "카테고리",
-      "품절",
-      "배송 보류",
-      "상품명",
+      "받는분성명",
+      "받는분전화번호",
+      "받는분기타연락처",
+      "받는분우편번호",
+      "받는분주소",
+      "내품수량",
+      "배송메세지1",
+      "출력일",
+      "운임구분",
+      "기본운임",
+      "고객사용번호",
+      "품명",
       "판매처",
       "주문번호",
-      "발주일",
-      "관리번호",
-      "상태",
-      "송장번호",
+      "주문일",
+      "판매가",
+      "정산금액",
+      "거래처코드",
   ]
-  standard_cols = [
+
+  kistic_cols = [
       "수령자이름",
       "수령자전화",
       "수령자휴대폰",
@@ -219,14 +236,14 @@ def process_custom_orders(shopmoa_df, always_df):
       else pd.DataFrame(columns=garam_cols)
   )
   kistic_df = (
-      pd.DataFrame(kistic_rows)[garam_cols]
+      pd.DataFrame(kistic_rows)[kistic_cols]
       if kistic_rows
-      else pd.DataFrame(columns=garam_cols)
+      else pd.DataFrame(columns=kistic_cols)
   )
   frozen_df = (
-      pd.DataFrame(frozen_rows)[standard_cols]
+      pd.DataFrame(frozen_rows)[kistic_cols]
       if frozen_rows
-      else pd.DataFrame(columns=standard_cols)
+      else pd.DataFrame(columns=kistic_cols)
   )
 
   return garam_df, kistic_df, frozen_df, date_str
