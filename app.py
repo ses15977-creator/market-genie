@@ -205,7 +205,7 @@ st.markdown("---")
 # --- [상품 마스터 및 재고 관리 섹션] ---
 tab_inv, tab_prod, tab_history = st.tabs([
     "📦 실시간 재고 관리",
-    "🏷️️ 상품 마스터 관리",
+    "🏷 상품 마스터 관리",
     "📥 등록된 원본 발주서 확인 및 재다운로드",
 ])
 
@@ -244,9 +244,9 @@ with tab_prod:
         "판매가": p_info["selling_price"],
         "원가": p_info["cost_price"],
         "배송비": p_info["shipping_fee"],
-        "부가세별도여부": "별도(10%가산)"
-        if p_info["vat_separate"]
-        else "포함",
+        "부가세별도여부": (
+            "별도(10%가산)" if p_info["vat_separate"] else "포함"
+        ),
     })
   st.dataframe(pd.DataFrame(prod_list), use_container_width=True)
 
@@ -258,50 +258,4 @@ with tab_prod:
       new_s_price = st.number_input("판매가 (원)", value=10000, step=100)
     with cp2:
       new_c_price = st.number_input("원가 (원)", value=5000, step=100)
-      new_ship = st.number_input("배송비 (원)", value=3000, step=100)
-    with cp3:
-      new_vat = st.checkbox("부가세 별도 (공급가에 10% 추가 계산)")
-      new_inv_qty = st.number_input("초기 재고 수량", value=100, step=10)
-
-    submitted_prod = st.form_submit_button("상품 등록/저장하기")
-    if submitted_prod and new_p_name:
-      st.session_state["product_master"][new_p_name] = {
-          "selling_price": new_s_price,
-          "cost_price": new_c_price,
-          "shipping_fee": new_ship,
-          "vat_separate": new_vat,
-      }
-      if new_p_name not in st.session_state["inventory"]:
-        st.session_state["inventory"][new_p_name] = new_inv_qty
-      st.success(f"'{new_p_name}' 상품이 성공적으로 등록되었습니다!")
-      st.rerun()
-
-with tab_history:
-  st.write(
-      "📌 지금까지 업로드되어 시스템에 반영된 원본 발주서(통합 데이터) 내역입니다."
-      " 날짜별로 다시 엑셀 파일로 다운로드할 수 있습니다."
-  )
-  raw_data = st.session_state["accumulated_raw_orders"]
-  if not raw_data.empty:
-    st.dataframe(raw_data, use_container_width=True)
-
-    unique_dates = raw_data["업로드일자"].unique()
-    selected_date_dl = st.selectbox(
-        "다운로드할 업로드 일자 선택", unique_dates
-    )
-
-    if selected_date_dl:
-      sub_df = raw_data[raw_data["업로드일자"] == selected_date_dl]
-      output_io = io.BytesIO()
-      with pd.ExcelWriter(output_io, engine="openpyxl") as writer:
-        sub_df.to_excel(writer, index=False)
-      output_io.seek(0)
-
-      st.download_button(
-          label=(
-              f"📥 [{selected_date_dl}] 업로드 원본 발주서 엑셀 다운로드"
-          ),
-          data=output_io,
-          file_name=f"마켓지니_원본발주서_{selected_date_dl}.xlsx",
-          mime=(
-              "application/vnd.openxmlformats-officedocument.spreadsheetml.
+      new_ship = st.number_input("배송비 (원)", value=3000, step=1
