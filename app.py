@@ -42,7 +42,7 @@ if "product_master" not in st.session_state:
           "cost_price": 113 * 40,
           "shipping_fee": 2900,
           "vat_separate": False,
-          "category_group": "키ส틱",
+          "category_group": "키스틱",
       },
       "키스틱 15g x 100개": {
           "selling_price": 19900,
@@ -204,130 +204,9 @@ if not acc_sales.empty:
     )
     st.dataframe(date_summary, use_container_width=True)
 else:
-  st.info(
-      "아직 업로드 및 반영된 데이터가 없습니다. 아래에서 발주서 파일을 업로드해"
-      " 주세요."
-  )
+  st.info("아직 업로드 및 반영된 데이터가 없습니다. 아래에서 발주서 파일을 업로드해 주세요.")
 
 st.markdown("---")
 
 # --- [상품 마스터 및 재고 관리 섹션] ---
-tab_inv, tab_prod, tab_history = st.tabs([
-    "📦 실시간 재고 관리",
-    "🏷 상품 마스터 관리",
-    "📥 등록된 원본 발주서 확인 및 재다운로드",
-])
-
-with tab_inv:
-  st.write("현재 창고에 남아 있는 상품별 실시간 재고 현황입니다.")
-  inv_df = pd.DataFrame(
-      list(st.session_state["inventory"].items()),
-      columns=["상품명", "현재고수량"],
-  )
-  st.dataframe(inv_df, use_container_width=True)
-
-  with st.form("inventory_form"):
-    st.write("🔧 재고 수동 조정")
-    col_i1, col_i2, col_i3 = st.columns([3, 2, 1])
-    with col_i1:
-      selected_item = st.selectbox(
-          "상품 선택", list(st.session_state["inventory"].keys())
-      )
-    with col_i2:
-      add_qty = st.number_input(
-          "입고/조정 수량 (+/-)", value=0, step=1, format="%d"
-      )
-    with col_i3:
-      submitted_inv = st.form_submit_button("재고 반영")
-    if submitted_inv and add_qty != 0:
-      st.session_state["inventory"][selected_item] += add_qty
-      st.success(f"{selected_item} 재고가 성공적으로 반영되었습니다!")
-      st.rerun()
-
-with tab_prod:
-  st.write(
-      "등록된 상품들의 판매가, 원가, 배송비 및 출고처 분류를 관리할 수"
-      " 있습니다."
-  )
-  prod_list = []
-  for p_name, p_info in st.session_state["product_master"].items():
-    prod_list.append({
-        "상품명": p_name,
-        "출고처 분류": p_info.get("category_group", "기타"),
-        "판매가": p_info["selling_price"],
-        "원가": p_info["cost_price"],
-        "배송비": p_info["shipping_fee"],
-        "부가세별도여부": (
-            "별도(10%가산)" if p_info["vat_separate"] else "포함"
-        ),
-    })
-  st.dataframe(pd.DataFrame(prod_list), use_container_width=True)
-
-  with st.form("new_product_form"):
-    st.write(
-        "✨ 신상품 등록 / 기존 상품 수정 (출고처 분류: 키스틱 / 냉동식품 /"
-        " 가람식품)"
-    )
-    cp1, cp2, cp3 = st.columns(3)
-    with cp1:
-      new_p_name = st.text_input("상품명 (옵션 포함 정확히 입력)")
-      new_cat_group = st.selectbox(
-          "출고처 분류", ["키스틱", "냉동식품", "가람식품"]
-      )
-    with cp2:
-      new_s_price = st.number_input("판매가 (원)", value=10000, step=100)
-      new_c_price = st.number_input("원가 (원)", value=5000, step=100)
-    with cp3:
-      new_ship = st.number_input("배송비 (원)", value=3000, step=100)
-      new_vat = st.checkbox("부가세 별도 (공급가에 10% 추가 계산)")
-
-    new_inv_qty = st.number_input("초기 재고 수량", value=100, step=10)
-
-    submitted_prod = st.form_submit_button("상품 등록/저장하기")
-    if submitted_prod and new_p_name:
-      st.session_state["product_master"][new_p_name] = {
-          "selling_price": new_s_price,
-          "cost_price": new_c_price,
-          "shipping_fee": new_ship,
-          "vat_separate": new_vat,
-          "category_group": new_cat_group,
-      }
-      if new_p_name not in st.session_state["inventory"]:
-        st.session_state["inventory"][new_p_name] = new_inv_qty
-      st.success(
-          f"'{new_p_name}' 상품이 [{new_cat_group}] 분류로 성공적으로"
-          " 등록되었습니다!"
-      )
-      st.rerun()
-
-with tab_history:
-  st.write(
-      "📌 지금까지 업로드되어 시스템에 반영된 원본 발주서(통합 데이터) 내역입니다."
-      " 날짜별로 다시 엑셀 파일로 다운로드할 수 있습니다."
-  )
-  raw_data = st.session_state["accumulated_raw_orders"]
-  if not raw_data.empty:
-    st.dataframe(raw_data, use_container_width=True)
-
-    unique_dates = raw_data["업로드일자"].unique()
-    selected_date_dl = st.selectbox(
-        "다운로드할 업로드 일자 선택", unique_dates
-    )
-
-    if selected_date_dl:
-      sub_df = raw_data[raw_data["업로드일자"] == selected_date_dl]
-      output_io = io.BytesIO()
-      with pd.ExcelWriter(output_io, engine="openpyxl") as writer:
-        sub_df.to_excel(writer, index=False)
-      output_io.seek(0)
-
-      st.download_button(
-          label=f"📥 [{selected_date_dl}] 업로드 원본 발주서 엑셀 다운로드",
-          data=output_io,
-          file_name=f"마켓지니_원본발주서_{selected_date_dl}.xlsx",
-          mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      )
-  else:
-    st.info(
-        "아직 저장된 업로드 원본 발주서 데이터가 없습니다. 파일을 업로드해"
-        " 주세요."
+tab_inv, tab_prod, tab_
