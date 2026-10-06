@@ -34,7 +34,7 @@ if "inventory" not in st.session_state:
       "체다치즈 부산어묵바 80g x 10개": 300,
   }
 
-# 상품 마스터 관리
+# 상품 마스터 관리 (출고 거래처 필드 'vendor_type' 추가: '가람식품', '키스틱', '냉동식품')
 if "product_master" not in st.session_state:
   st.session_state["product_master"] = {
       "키스틱 15g x 40개": {
@@ -42,55 +42,63 @@ if "product_master" not in st.session_state:
           "cost_price": 113 * 40,
           "shipping_fee": 2900,
           "vat_separate": False,
+          "vendor_type": "키스틱",
       },
       "키스틱 15g x 100개": {
           "selling_price": 19900,
           "cost_price": 113 * 100,
           "shipping_fee": 2900,
           "vat_separate": False,
+          "vendor_type": "키스틱",
       },
       "더 바삭한 중화 고추잡채 군만두 1.2kg": {
           "selling_price": 13900,
           "cost_price": 4700,
           "shipping_fee": 3900,
           "vat_separate": False,
+          "vendor_type": "냉동식품",
       },
       "김말이튀김400g": {
           "selling_price": 13900,
           "cost_price": 1700 * 3,
           "shipping_fee": 3900,
           "vat_separate": False,
+          "vendor_type": "냉동식품",
       },
       "오리지날 부산어묵바 80g x 10개": {
           "selling_price": 18900,
           "cost_price": int(536 * 1.1 * 10),
           "shipping_fee": 4300,
           "vat_separate": True,
+          "vendor_type": "가람식품",
       },
       "매콤달콤 부산어묵바 80g x 10개": {
           "selling_price": 19900,
           "cost_price": int(560 * 1.1 * 10),
           "shipping_fee": 4300,
           "vat_separate": True,
+          "vendor_type": "가람식품",
       },
       "오징어야채 부산어묵바 80g x 10개": {
           "selling_price": 20900,
           "cost_price": int(575 * 1.1 * 10),
           "shipping_fee": 4300,
           "vat_separate": True,
+          "vendor_type": "가람식품",
       },
       "체다치즈 부산어묵바 80g x 10개": {
           "selling_price": 21900,
           "cost_price": int(646 * 1.1 * 10),
           "shipping_fee": 4300,
           "vat_separate": True,
+          "vendor_type": "가람식품",
       },
   }
 
-st.title("📦 마켓지니 판매 및 재고 관리 프로그램")
+st.title("📦 마켓지니 판매 및 재고 관리 프로그램 (고도화 버전)")
 st.write(
-    "발주서 업로드 시 파일 내 날짜 기준 중복 검증, 원본 데이터 영구 저장 및 재다운로드,"
-    " 실시간 재고 차감이 지원됩니다."
+    "발주서 업로드 시 파일 내 날짜 기준 중복 검증, 원본 데이터 영구 저장,"
+    " 그리고 마스터 연동 출고처 자동 분류가 지원됩니다."
 )
 
 # ⚙️ 플랫폼 수수료율 설정
@@ -205,7 +213,7 @@ st.markdown("---")
 # --- [상품 마스터 및 재고 관리 섹션] ---
 tab_inv, tab_prod, tab_history = st.tabs([
     "📦 실시간 재고 관리",
-    "🏷 상품 마스터 관리",
+    "🏷 상품 마스터 관리 (출고처 설정)",
     "📥 등록된 원본 발주서 확인 및 재다운로드",
 ])
 
@@ -236,14 +244,18 @@ with tab_inv:
       st.rerun()
 
 with tab_prod:
-  st.write("등록된 상품들의 판매가, 원가, 배송비 기준을 관리할 수 있습니다.")
+  st.write(
+      "등록된 상품들의 판매가, 원가, 배송비 및 **출고 거래처**를 관리할 수"
+      " 있습니다."
+  )
   prod_list = []
   for p_name, p_info in st.session_state["product_master"].items():
     prod_list.append({
         "상품명": p_name,
         "판매가": p_info["selling_price"],
-        "원가": p_info["cost_price"],
+        "원가": p_info["원가" if "원가" in p_info else "cost_price"],
         "배송비": p_info["shipping_fee"],
+        "출고거래처": p_info.get("vendor_type", "키스틱"),
         "부가세별도여부": (
             "별도(10%가산)" if p_info["vat_separate"] else "포함"
         ),
@@ -260,6 +272,9 @@ with tab_prod:
       new_c_price = st.number_input("원가 (원)", value=5000, step=100)
       new_ship = st.number_input("배송비 (원)", value=3000, step=100)
     with cp3:
+      new_vendor = st.selectbox(
+          "출고 거래처 분류", ["가람식품", "키스틱", "냉동식품"]
+      )
       new_vat = st.checkbox("부가세 별도 (공급가에 10% 추가 계산)")
       new_inv_qty = st.number_input("초기 재고 수량", value=100, step=10)
 
@@ -270,10 +285,13 @@ with tab_prod:
           "cost_price": new_c_price,
           "shipping_fee": new_ship,
           "vat_separate": new_vat,
+          "vendor_type": new_vendor,
       }
       if new_p_name not in st.session_state["inventory"]:
         st.session_state["inventory"][new_p_name] = new_inv_qty
-      st.success(f"'{new_p_name}' 상품이 성공적으로 등록되었습니다!")
+      st.success(
+          f"'{new_p_name}' 상품이 [{new_vendor}] 출고처로 등록되었습니다!"
+      )
       st.rerun()
 
 with tab_history:
@@ -326,69 +344,37 @@ with col2:
   )
 
 
-def calculate_item_finance(product_name, option_name, channel):
+def match_product_master(product_name, option_name):
   p_str = str(product_name)
   o_str = str(option_name)
   combined_text = p_str + " " + o_str
 
-  matched_key = "기타상품"
+  matched_key = None
   for key in st.session_state["product_master"].keys():
-    keywords = key.split()
-    if all(kw in combined_text for kw in keywords[:2]):
+    if key in combined_text:
       matched_key = key
       break
-    elif "키스틱" in combined_text and "키스틱" in key:
-      if "40개" in combined_text and "40개" in key:
-        matched_key = key
-        break
-      elif "100개" in combined_text and "100개" in key:
-        matched_key = key
-        break
-    elif "만두" in combined_text or "고추잡채" in combined_text:
-      if "만두" in key or "고추잡채" in key:
-        matched_key = key
-        break
-    elif "김말이" in combined_text and "김말이" in key:
-      matched_key = key
-      break
-    elif "어묵바" in combined_text and "어묵바" in key:
-      if "매콤" in combined_text and "매콤" in key:
-        matched_key = key
-        break
-      elif "오징어" in combined_text and "오징어" in key:
-        matched_key = key
-        break
-      elif "체다" in combined_text and "체다" in key:
-        matched_key = key
-        break
-      elif "오리지날" in combined_text and "오리지날" in key:
+
+  # 유연한 키워드 매칭 백업
+  if not matched_key:
+    for key in st.session_state["product_master"].keys():
+      keywords = key.split()
+      if any(kw in combined_text for kw in keywords if len(kw) > 1):
         matched_key = key
         break
 
-  if matched_key in st.session_state["product_master"]:
+  if matched_key and matched_key in st.session_state["product_master"]:
     p_info = st.session_state["product_master"][matched_key]
-    selling_price = p_info["selling_price"]
-    cost_price = p_info["cost_price"]
-    shipping_fee = p_info["shipping_fee"]
-    item_category = matched_key
+    return matched_key, p_info
   else:
-    selling_price = 10000
-    cost_price = 5000
-    shipping_fee = 3000
-    item_category = "기타상품"
-
-  rate = fee_rates.get(channel, 0.10)
-  platform_fee = selling_price * rate
-  net_profit = selling_price - platform_fee - cost_price - shipping_fee
-
-  return {
-      "카테고리": item_category,
-      "판매가": selling_price,
-      "원가": cost_price,
-      "배송비": shipping_fee,
-      "플랫폼수수료": platform_fee,
-      "순수익": net_profit,
-  }
+    # 기본값 (기타상품 처리)
+    return "기타상품", {
+        "selling_price": 10000,
+        "cost_price": 5000,
+        "shipping_fee": 3000,
+        "vat_separate": False,
+        "vendor_type": "키ส틱",
+    }
 
 
 def get_column_value(row, possible_cols, default=""):
@@ -489,19 +475,28 @@ def process_custom_orders(shopmoa_df, always_df):
             row, ["송장번호", "택배송장번호", "운송장번호"]
         )
 
-      fin = calculate_item_finance(p_name, opt_name, detected_channel)
+      # 상품 마스터 매칭 및 재무 정보 계산
+      matched_key, p_info = match_product_master(p_name, opt_name)
+      selling_price = p_info["selling_price"]
+      cost_price = p_info["cost_price"]
+      shipping_fee = p_info["shipping_fee"]
+      vendor_type = p_info.get("vendor_type", "키스틱")
+
+      rate = fee_rates.get(detected_channel, 0.10)
+      platform_fee = selling_price * rate
+      net_profit = selling_price - platform_fee - cost_price - shipping_fee
 
       for _ in range(max(1, qty)):
         sales_data_list.append({
             "업로드일자": detected_date,
             "판매처": detected_channel,
             "주문번호": str(order_id),
-            "상품명": fin["카테고리"],
-            "판매가": fin["판매가"],
-            "원가": fin["원가"],
-            "배송비": fin["배송비"],
-            "플랫폼수수료": fin["플랫폼수수료"],
-            "순수익": fin["순수익"],
+            "상품명": matched_key,
+            "판매가": selling_price,
+            "원가": cost_price,
+            "배송비": shipping_fee,
+            "플랫폼수수료": platform_fee,
+            "순수익": net_profit,
         })
 
       base_row = {
@@ -527,336 +522,4 @@ def process_custom_orders(shopmoa_df, always_df):
           "원격_받는분기타연락처": mobile,
           "원격_받는분우편번호": zipcode,
           "원격_받는분주소": address,
-          "상품명_원본": p_name,
-          "옵션_원본": opt_name,
-          "상품수량": qty,
-          "배송메세지1": msg,
-          "주문번호": order_id,
-          "송장번호": invoice_no,
-          "주문일": detected_date,
-          "판매처": detected_channel,
-      })
-
-  parse_dataframe(shopmoa_df, "샵모아")
-  parse_dataframe(always_df, "올웨이즈")
-
-  if not frames:
-    return (
-        pd.DataFrame(),
-        pd.DataFrame(),
-        pd.DataFrame(),
-        pd.DataFrame(),
-        pd.DataFrame(),
-        detected_date,
-    )
-
-  combined = pd.DataFrame(frames)
-  sales_df = pd.DataFrame(sales_data_list)
-  raw_df = pd.DataFrame(raw_rows_list)
-
-  garam_rows = []
-  kistic_rows = []
-  frozen_rows = []
-
-  for _, row in combined.iterrows():
-    p_name = str(row["상품명_원본"])
-    opt_name = str(row["옵션_원본"])
-    qty = int(row["상품수량"])
-
-    def create_garam_row(name, quantity):
-      return {
-          "받는분성명": name,
-          "받는분전화번호": row["원격_받는분전화번호"],
-          "받는분기타연락처": row["원격_받는분기타연락처"],
-          "받는분우편번호": row["원격_받는분우편번호"],
-          "받는분주소": row["원격_받는분주소"],
-          "내품수량": quantity,
-          "배송메세지1": row["배송메세지1"],
-          "출력일": "",
-          "운임구분": "",
-          "기본운임": "",
-          "고객사용번호": "",
-          "품명": "",
-          "판매처": row["판매처"],
-          "주문번호": row["주문번호"],
-          "송장번호": row["송장번호"],
-          "주문일": row["주문일"],
-          "판매가": "",
-          "정산금액": "",
-          "거래처코드": 16,
-      }
-
-    def create_standard_row(name, quantity):
-      return {
-          "수령자이름": name,
-          "수령자전화": row["원격_받는분전화번호"],
-          "수령자휴대폰": row["원격_받는분기타연락처"],
-          "수령자우편번호": row["원격_받는분우편번호"],
-          "수령자주소": row["원격_받는분주소"],
-          "상품수량": quantity,
-          "배송메모": row["배송메세지1"],
-          "제조사": "",
-          "카테고리": "",
-          "품절": "",
-          "배송 보류": "",
-          "상품명": "",
-          "판매처": row["판매처"],
-          "주문번호": row["주문번호"],
-          "발주일": "",
-          "관리번호": "",
-          "상태": "",
-          "송장번호": row["송장번호"],
-      }
-
-    if "어묵바" in p_name or "어묵바" in opt_name:
-      target_name = "오리지날 부산어묵바 80g x 10개"
-      if "매콤달콤" in opt_name or "매콤한맛" in p_name:
-        target_name = "매콤달콤 부산어묵바 80g x 10개"
-      elif "오징어야채" in opt_name or "오징어야채" in p_name:
-        target_name = "오징어야채 부산어묵바 80g x 10개"
-      elif "체다치즈" in opt_name or "체다치즈" in p_name:
-        target_name = "체다치즈 부산어묵바 80g x 10개"
-
-      base_name = str(row["원격_받는분성명"])
-      for i in range(qty):
-        r_name = f"{base_name}{i+1}" if qty > 1 else base_name
-        r_copy = create_garam_row(r_name, 1)
-        r_copy["품명"] = target_name
-        garam_rows.append(r_copy)
-        if target_name in st.session_state["inventory"]:
-          st.session_state["inventory"][target_name] -= 1
-
-    elif "키스틱" in p_name or "키스틱" in opt_name:
-      is_40 = "40개" in p_name or "40개" in opt_name
-      base_name = str(row["원격_받는분성명"])
-
-      if is_40:
-        if qty == 2:
-          r_copy = create_standard_row(base_name, 1)
-          r_copy["상품명"] = "키스틱 15g x 100개"
-          kistic_rows.append(r_copy)
-          if "키스틱 15g x 100개" in st.session_state["inventory"]:
-            st.session_state["inventory"]["키스틱 15g x 100개"] -= 1
-        elif qty == 3:
-          r1 = create_standard_row(base_name, 1)
-          r1["상품명"] = "키스틱 15g x 40개"
-          kistic_rows.append(r1)
-          r2 = create_standard_row(f"{base_name}2", 1)
-          r2["상품명"] = "키스틱 15g x 100개"
-          kistic_rows.append(r2)
-          if "키스틱 15g x 40개" in st.session_state["inventory"]:
-            st.session_state["inventory"]["키스틱 15g x 40개"] -= 1
-          if "키스틱 15g x 100개" in st.session_state["inventory"]:
-            st.session_state["inventory"]["키스틱 15g x 100개"] -= 1
-        else:
-          r_copy = create_standard_row(base_name, qty)
-          r_copy["상품명"] = "키스틱 15g x 40개"
-          kistic_rows.append(r_copy)
-          if "키스틱 15g x 40개" in st.session_state["inventory"]:
-            st.session_state["inventory"]["키스틱 15g x 40개"] -= qty
-      else:
-        r_copy = create_standard_row(base_name, qty)
-        r_copy["상품명"] = "키스틱 15g x 100개"
-        kistic_rows.append(r_copy)
-        if "키스틱 15g x 100개" in st.session_state["inventory"]:
-          st.session_state["inventory"]["키스틱 15g x 100개"] -= qty
-
-    elif "만두" in p_name or "고추잡채" in p_name:
-      base_name = str(row["원격_받는분성명"])
-      r_copy = create_standard_row(base_name, qty)
-      r_copy["상품명"] = "더 바삭한 중화 고추잡채 군만두 1.2kg"
-      frozen_rows.append(r_copy)
-      if "더 바삭한 중화 고추잡채 군만두 1.2kg" in st.session_state["inventory"]:
-        st.session_state["inventory"][
-            "더 바삭한 중화 고추잡채 군만두 1.2kg"
-        ] -= qty
-
-    elif "김말이" in p_name:
-      base_name = str(row["원격_받는분성명"])
-      r_copy = create_standard_row(base_name, qty * 3)
-      r_copy["상품명"] = "김말이튀김400g"
-      frozen_rows.append(r_copy)
-      if "김말이튀김400g" in st.session_state["inventory"]:
-        st.session_state["inventory"]["김말이튀김400g"] -= qty * 3
-
-  garam_cols = [
-      "받는분성명",
-      "받는분전화번호",
-      "받는분기타연락처",
-      "받는분우편번호",
-      "받는분주소",
-      "내품수량",
-      "배송메세지1",
-      "출력일",
-      "운임구분",
-      "기본운임",
-      "고객사용번호",
-      "품명",
-      "판매처",
-      "주문번호",
-      "송장번호",
-      "주문일",
-      "판매가",
-      "정산금액",
-      "거래처코드",
-  ]
-  kistic_cols = [
-      "수령자이름",
-      "수령자전화",
-      "수령자휴대폰",
-      "수령자우편번호",
-      "수령자주소",
-      "상품수량",
-      "배송메모",
-      "제조사",
-      "카테고리",
-      "품절",
-      "배송 보류",
-      "상품명",
-      "판매처",
-      "주문번호",
-      "발주일",
-      "관리번호",
-      "상태",
-      "송장번호",
-  ]
-
-  garam_df = (
-      pd.DataFrame(garam_rows)[garam_cols]
-      if garam_rows
-      else pd.DataFrame(columns=garam_cols)
-  )
-  kistic_df = (
-      pd.DataFrame(kistic_rows)[kistic_cols]
-      if kistic_rows
-      else pd.DataFrame(columns=kistic_cols)
-  )
-  frozen_df = (
-      pd.DataFrame(frozen_rows)[kistic_cols]
-      if frozen_rows
-      else pd.DataFrame(columns=kistic_cols)
-  )
-
-  return garam_df, kistic_df, frozen_df, sales_df, raw_df, detected_date
-
-
-# 2. 실행 및 다운로드 버튼 섹션
-st.markdown("---")
-st.subheader("2. 맞춤형 발주서 변환 및 누적 데이터 반영 실행")
-
-col_btn1, col_btn2, col_btn3 = st.columns([2, 2, 1])
-
-with col_btn1:
-  run_clicked = st.button(
-      "🚀 발주서 변환 및 재고차감/누적 반영", type="primary"
-  )
-
-with col_btn2:
-  current_date_str = datetime.now().strftime("%Y-%m-%d")
-  zip_buffer = io.BytesIO()
-  with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-    if not st.session_state["accumulated_garam"].empty:
-      g_io = io.BytesIO()
-      with pd.ExcelWriter(g_io, engine="openpyxl") as writer:
-        st.session_state["accumulated_garam"].to_excel(writer, index=False)
-      zip_file.writestr(
-          f"가람식품_통합누적_발주서_{current_date_str}.xlsx", g_io.getvalue()
-      )
-
-    if not st.session_state["accumulated_kistic"].empty:
-      k_io = io.BytesIO()
-      with pd.ExcelWriter(k_io, engine="openpyxl") as writer:
-        st.session_state["accumulated_kistic"].to_excel(writer, index=False)
-      zip_file.writestr(
-          f"키스틱_통합누적_발주서_{current_date_str}.xlsx", k_io.getvalue()
-      )
-
-    if not st.session_state["accumulated_frozen"].empty:
-      f_io = io.BytesIO()
-      with pd.ExcelWriter(f_io, engine="openpyxl") as writer:
-        st.session_state["accumulated_frozen"].to_excel(writer, index=False)
-      zip_file.writestr(
-          f"냉동식품_통합누적_발주서_{current_date_str}.xlsx", f_io.getvalue()
-      )
-  zip_buffer.seek(0)
-
-  st.download_button(
-      label="📥 누적 통합 발주서 ZIP 다운로드",
-      data=zip_buffer,
-      file_name=f"마켓지니_전체누적_통합발주서_{current_date_str}.zip",
-      mime="application/zip",
-  )
-
-with col_btn3:
-  if st.button("🧹 전체 초기화"):
-    st.session_state["accumulated_sales"] = pd.DataFrame()
-    st.session_state["accumulated_garam"] = pd.DataFrame()
-    st.session_state["accumulated_kistic"] = pd.DataFrame()
-    st.session_state["accumulated_frozen"] = pd.DataFrame()
-    st.session_state["accumulated_raw_orders"] = pd.DataFrame()
-    st.success("초기화 완료")
-    st.rerun()
-
-if run_clicked:
-  if shopmoa_file is None and always_file is None:
-    st.warning("최소 한 개 이상의 발주서 파일을 업로드해 주세요.")
-  else:
-    try:
-      s_df = pd.read_excel(shopmoa_file) if shopmoa_file else None
-      a_df = pd.read_excel(always_file) if always_file else None
-
-      _, _, _, _, _, detected_date = process_custom_orders(s_df, a_df)
-
-      existing_sales = st.session_state["accumulated_sales"]
-      if not existing_sales.empty and detected_date in existing_sales[
-          "업로드일자"
-      ].astype(str).values:
-        st.error(
-            f"⚠️ [중복 업로드 방지] 이미 '{detected_date}' 일자의 발주서 데이터가"
-            " 누적 반영되어 있습니다. 동일한 파일은 중복 적용되지 않습니다."
-        )
-      else:
-        garam_df, kistic_df, frozen_df, sales_df, raw_df, date_str = (
-            process_custom_orders(s_df, a_df)
-        )
-
-        if not sales_df.empty:
-          st.session_state["accumulated_sales"] = pd.concat(
-              [st.session_state["accumulated_sales"], sales_df],
-              ignore_index=True,
-          )
-        if not garam_df.empty:
-          st.session_state["accumulated_garam"] = pd.concat(
-              [st.session_state["accumulated_garam"], garam_df],
-              ignore_index=True,
-          )
-        if not kistic_df.empty:
-          st.session_state["accumulated_kistic"] = pd.concat(
-              [
-                  st.session_state["accumulated_kistic"],
-                  kistic_df,
-              ],
-              ignore_index=True,
-          )
-        if not frozen_df.empty:
-          st.session_state["accumulated_frozen"] = pd.concat(
-              [
-                  st.session_state["accumulated_frozen"],
-                  frozen_df,
-              ],
-              ignore_index=True,
-          )
-        if not raw_df.empty:
-          st.session_state["accumulated_raw_orders"] = pd.concat(
-              [st.session_state["accumulated_raw_orders"], raw_df],
-              ignore_index=True,
-          )
-
-        st.success(
-            f"✨ [날짜: {date_str}] 발주서가 성공적으로 분석되어 원본 저장, 재고"
-            " 차감 및 누적 반영되었습니다!"
-        )
-        st.rerun()
-
-    except Exception as e:
-      st.error(f"파일 처리 중 오류가 발생했습니다: {e}")
+          "상품명
