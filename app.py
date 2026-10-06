@@ -4,6 +4,7 @@ import zipfile
 import pandas as pd
 import streamlit as st
 
+# 페이지 설정
 st.set_page_config(
     page_title="마켓지니 판매관리 프로그램", page_icon="📦", layout="centered"
 )
@@ -20,11 +21,11 @@ if "accumulated_frozen" not in st.session_state:
 
 st.title("📦 마켓지니 판매관리 프로그램")
 st.write(
-    "발주서 파일을 업로드하면, 플랫폼별 수수료율에 따른 매출 및 순수익을 분석하고"
+    "발주서 파일을 업로드하면, 플랫폼별 수수료율에 따른 매출 및 순수익을 분석하고,"
     " 공급처별 통합 발주서를 생성합니다."
 )
 
-# ⚙️ 플랫폼 수수료율 설정 (평소에는 접혀있도록 expander로 숨김 처리)
+# ⚙️ 플랫폼 수수료율 설정
 with st.expander("⚙️ 플랫폼 수수료율 상세 설정 (클릭하여 열기)", expanded=False):
   col_f1, col_f2, col_f3, col_f4, col_f5, col_f6 = st.columns(6)
   with col_f1:
@@ -82,7 +83,7 @@ def calculate_item_finance(product_name, option_name, channel):
   selling_price = 0
   cost_price = 0
   shipping_fee = 0
-  item_category = "기타"
+  item_category = "기타상품"
 
   # 1. 키스틱
   if "키스틱" in combined_text:
@@ -90,18 +91,18 @@ def calculate_item_finance(product_name, option_name, channel):
     if "40개" in combined_text:
       selling_price = 9900
       cost_price = 113 * 40
-      item_category = "키스틱 40개입"
+      item_category = "키스틱 15g x 40개"
     else:
       selling_price = 19900
       cost_price = 113 * 100
-      item_category = "키스틱 100개입"
+      item_category = "키스틱 15g x 100개"
 
   # 2. 고추잡채만두
   elif "만두" in combined_text or "고추잡채" in combined_text:
     shipping_fee = 3900
     selling_price = 13900
     cost_price = 4700
-    item_category = "고추잡채군만두 1.2kg"
+    item_category = "더 바삭한 중화 고추잡채 군만두 1.2kg"
 
   # 3. 김말이튀김
   elif "김말이" in combined_text:
@@ -116,26 +117,25 @@ def calculate_item_finance(product_name, option_name, channel):
     if "매콤달콤" in combined_text:
       selling_price = 19900
       cost_price = int(560 * 1.1 * 10)
-      item_category = "매콤달콤 부산어묵바"
+      item_category = "매콤달콤 부산어묵바 80g x 10개"
     elif "오징어야채" in combined_text:
       selling_price = 20900
       cost_price = int(575 * 1.1 * 10)
-      item_category = "오징어야채 부산어묵바"
+      item_category = "오징어야채 부산어묵바 80g x 10개"
     elif "체다치즈" in combined_text:
       selling_price = 21900
       cost_price = int(646 * 1.1 * 10)
-      item_category = "체다치즈 부산어묵바"
+      item_category = "체다치즈 부산어묵바 80g x 10개"
     else:
       selling_price = 18900
       cost_price = int(536 * 1.1 * 10)
-      item_category = "오리지날 부산어묵바"
+      item_category = "오리지날 부산어묵바 80g x 10개"
   else:
     selling_price = 10000
     cost_price = 5000
     shipping_fee = 3000
     item_category = "기타상품"
 
-  # 선택된 플랫폼별 수수료율 적용
   rate = fee_rates.get(channel, 0.10)
   platform_fee = selling_price * rate
   net_profit = selling_price - cost_price - shipping_fee - platform_fee
@@ -150,6 +150,14 @@ def calculate_item_finance(product_name, option_name, channel):
   }
 
 
+def get_column_value(row, possible_cols, default=""):
+  """여러 후보 컬럼명 중 존재하는 첫 번째 값을 안전하게 반환"""
+  for col in possible_cols:
+    if col in row and pd.notna(row[col]):
+      return str(row[col])
+  return default
+
+
 def process_custom_orders(shopmoa_df, always_df):
   frames = []
   sales_data_list = []
@@ -160,53 +168,54 @@ def process_custom_orders(shopmoa_df, always_df):
       return
     for _, row in df.iterrows():
       detected_channel = default_channel_name
-      for col in row.index:
-        val = str(row[col])
-        if "쿠팡" in val or "쿠팡" in str(col):
-          detected_channel = "쿠팡"
-          break
-        elif (
-            "스마트스토어" in val
-            or "네이버" in val
-            or "스마트스토어" in str(col)
-        ):
-          detected_channel = "스마트스토어"
-          break
-        elif "지마켓" in val or "G마켓" in val or "지마켓" in str(col):
-          detected_channel = "지마켓"
-          break
-        elif "옥션" in val or "옥션" in str(col):
-          detected_channel = "옥션"
-          break
-        elif "카카오" in val or "쇼핑하기" in val or "카카오" in str(col):
-          detected_channel = "카카오쇼핑하기"
-          break
-        elif "올웨이즈" in val or "올웨이즈" in str(col):
-          detected_channel = "올웨이즈"
-          break
+      row_str = " ".join([str(val) for val in row.values])
+
+      # 채널 자동 감지
+      if "쿠팡" in row_str:
+        detected_channel = "쿠팡"
+      elif "스마트스토어" in row_str or "네이버" in row_str:
+        detected_channel = "스마트스토어"
+      elif "지마켓" in row_str or "G마켓" in row_str:
+        detected_channel = "지마켓"
+      elif "옥션" in row_str:
+        detected_channel = "옥션"
+      elif "카카오" in row_str or "쇼핑하기" in row_str:
+        detected_channel = "카카오쇼핑하기"
+      elif "올웨이즈" in row_str:
+        detected_channel = "올웨이즈"
 
       if default_channel_name == "샵모아":
-        sname = row.get("수취인명", "")
-        phone = row.get("수취인 전화번호", "")
-        mobile = row.get("수취인 핸드폰번호", "")
-        zipcode = row.get("우편번호", "")
-        address = row.get("수취인주소", "")
-        p_name = row.get("상품명", "")
-        opt_name = row.get("옵션", "")
-        qty = int(pd.to_numeric(row.get("수량", 1), errors="coerce"))
-        msg = row.get("배송메세지", "")
-        order_id = row.get("주문번호", "")
+        sname = get_column_value(row, ["수취인명", "수령인", "받는분성명"])
+        phone = get_column_value(
+            row, ["수취인 전화번호", "수령인 연락처", "전화번호"]
+        )
+        mobile = get_column_value(
+            row, ["수취인 핸드폰번호", "수령인 핸드폰", "휴대폰번호", "핸드폰"]
+        )
+        if not mobile:
+          mobile = phone
+        zipcode = get_column_value(row, ["우편번호"])
+        address = get_column_value(row, ["수취인주소", "주소"])
+        p_name = get_column_value(row, ["상품명"])
+        opt_name = get_column_value(row, ["옵션", "상품옵션"])
+        qty_val = get_column_value(row, ["수량", "주문수량"], "1")
+        qty = int(pd.to_numeric(qty_val, errors="coerce") or 1)
+        msg = get_column_value(row, ["배송메세지", "배송메모", "고객요청사항"])
+        order_id = get_column_value(row, ["주문번호", "주문아이디"])
       else:
-        sname = row.get("수령인", "")
-        phone = row.get("수령인 연락처", "")
-        mobile = row.get("수령인 연락처", "")
-        zipcode = row.get("우편번호", "")
-        address = row.get("주소", "")
-        p_name = row.get("상품명", "")
-        opt_name = row.get("옵션", "")
-        qty = int(pd.to_numeric(row.get("수량", 1), errors="coerce"))
-        msg = ""
-        order_id = row.get("주문아이디", "")
+        sname = get_column_value(row, ["수령인", "수취인명"])
+        phone = get_column_value(row, ["수령인 연락처", "전화번호"])
+        mobile = get_column_value(row, ["수령인 핸드폰", "핸드폰", "휴대폰번호"])
+        if not mobile:
+          mobile = phone
+        zipcode = get_column_value(row, ["우편번호"])
+        address = get_column_value(row, ["주소", "수취인주소"])
+        p_name = get_column_value(row, ["상품명"])
+        opt_name = get_column_value(row, ["옵션", "상품옵션"])
+        qty_val = get_column_value(row, ["수량", "주문수량"], "1")
+        qty = int(pd.to_numeric(qty_val, errors="coerce") or 1)
+        msg = get_column_value(row, ["배송메모", "배송메세지"])
+        order_id = get_column_value(row, ["주문아이디", "주문번호"])
 
       fin = calculate_item_finance(p_name, opt_name, detected_channel)
 
@@ -293,7 +302,7 @@ def process_custom_orders(shopmoa_df, always_df):
           "수령자우편번호": row["원격_받는분우편번호"],
           "수령자주소": row["원격_받는분주소"],
           "상품수량": quantity,
-          "배송메모": "",
+          "배송메모": row["배송메세지1"],
           "제조사": "",
           "카테고리": "",
           "품절": "",
@@ -307,6 +316,7 @@ def process_custom_orders(shopmoa_df, always_df):
           "송장번호": "",
       }
 
+    # 1. 어묵바 (가람식품) 분기
     if "어묵바" in p_name or "어묵바" in opt_name:
       target_name = "오리지날 부산어묵바 80g x 10개"
       if "매콤달콤" in opt_name or "매콤달콤" in p_name:
@@ -323,6 +333,7 @@ def process_custom_orders(shopmoa_df, always_df):
         r_copy["품명"] = target_name
         garam_rows.append(r_copy)
 
+    # 2. 키스틱 분기
     elif "키스틱" in p_name or "키스틱" in opt_name:
       is_40 = "40개" in p_name or "40개" in opt_name
       base_name = str(row["원격_받는분성명"])
@@ -348,12 +359,14 @@ def process_custom_orders(shopmoa_df, always_df):
         r_copy["상품명"] = "키스틱 15g x 100개"
         kistic_rows.append(r_copy)
 
+    # 3. 만두 분기
     elif "만두" in p_name or "고추잡채" in p_name:
       base_name = str(row["원격_받는분성명"])
       r_copy = create_standard_row(base_name, qty)
       r_copy["상품명"] = "더 바삭한 중화 고추잡채 군만두 1.2kg"
       frozen_rows.append(r_copy)
 
+    # 4. 김말이 분기
     elif "김말이" in p_name:
       base_name = str(row["원격_받는분성명"])
       r_copy = create_standard_row(base_name, qty * 3)
@@ -420,7 +433,7 @@ def process_custom_orders(shopmoa_df, always_df):
   return garam_df, kistic_df, frozen_df, sales_df, date_str
 
 
-# 2. 실행 버튼 및 압축 다운로드 섹션 (변환 버튼과 다운로드 버튼을 나란히 배치)
+# 2. 실행 및 다운로드 섹션
 st.markdown("---")
 st.subheader("2. 맞춤형 발주서 변환 및 누적 수익 분석 실행")
 
@@ -432,10 +445,7 @@ with col_btn1:
   )
 
 with col_btn2:
-  # 현재 날짜 가져오기
   current_date_str = datetime.now().strftime("%Y-%m-%d")
-
-  # 데이터가 있을 때만 압축 파일 생성 데이터를 구성하여 다운로드 버튼 활성화
   zip_buffer = io.BytesIO()
   with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
     if not st.session_state["accumulated_garam"].empty:
@@ -461,7 +471,6 @@ with col_btn2:
       zip_file.writestr(
           f"냉동식품_통합누적_발주서_{current_date_str}.xlsx", f_io.getvalue()
       )
-
   zip_buffer.seek(0)
 
   st.download_button(
@@ -502,11 +511,19 @@ if run_clicked:
         )
       if not kistic_df.empty:
         st.session_state["accumulated_kistic"] = pd.concat(
-            [st.session_state["accumulated_kistic"], kistic_df], ignore_index=True
+            [
+                st.session_state["accumulated_kistic"],
+                kistic_df,
+            ],
+            ignore_index=True,
         )
       if not frozen_df.empty:
         st.session_state["accumulated_frozen"] = pd.concat(
-            [st.session_state["accumulated_frozen"], frozen_df], ignore_index=True
+            [
+                st.session_state["accumulated_frozen"],
+                frozen_df,
+            ],
+            ignore_index=True,
         )
 
       st.success(
