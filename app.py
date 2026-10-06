@@ -9,7 +9,7 @@ st.set_page_config(
     page_title="마켓지니 통합 판매관리 프로그램", page_icon="📦", layout="centered"
 )
 
-# 세션 상태 초기화 (누적 데이터 및 재고 관리용)
+# 1. 세션 상태 초기화 (누적 데이터 및 재고 관리)
 if "accumulated_sales" not in st.session_state:
   st.session_state["accumulated_sales"] = pd.DataFrame()
 if "accumulated_garam" not in st.session_state:
@@ -19,14 +19,27 @@ if "accumulated_kistic" not in st.session_state:
 if "accumulated_frozen" not in st.session_state:
   st.session_state["accumulated_frozen"] = pd.DataFrame()
 
+# 초기 재고 설정 (필요에 따라 언제든 조절 가능)
+if "inventory" not in st.session_state:
+  st.session_state["inventory"] = {
+      "키스틱 15g x 40개": 500,
+      "키스틱 15g x 100개": 500,
+      "더 바삭한 중화 고추잡채 군만두 1.2kg": 300,
+      "김말이튀김400g": 400,
+      "오리지날 부산어묵바 80g x 10개": 300,
+      "매콤달콤 부산어묵바 80g x 10개": 300,
+      "오징어야채 부산어묵바 80g x 10개": 300,
+      "체다치즈 부산어묵바 80g x 10개": 300,
+  }
+
 st.title("📦 마켓지니 판매 및 재고 관리 프로그램")
 st.write(
-    "발주서 파일을 업로드하면, 플랫폼별 수수료율 및 상품별 고정 원가·배송비·부가세율을"
-    " 반영하여 순수익을 정산하고 공급처별 통합 발주서를 생성합니다."
+    "발주서 업로드 시 플랫폼별 수수료, 고정 원가·배송비·부가세가 자동 계산되며,"
+    " 재고가 실시간 차감되고 정확한 송장 연동 발주서가 생성됩니다."
 )
 
 # ⚙️ 플랫폼 수수료율 설정
-with st.expander("⚙️️ 플랫폼 수수료율 상세 설정 (클릭하여 열기)", expanded=False):
+with st.expander("⚙️ 플랫폼 수수료율 상세 설정 (클릭하여 열기)", expanded=False):
   col_f1, col_f2, col_f3, col_f4, col_f5, col_f6 = st.columns(6)
   with col_f1:
     fee_smart = st.number_input(
@@ -134,6 +147,38 @@ else:
 
 st.markdown("---")
 
+# --- [재고 현황판 및 관리 섹션] ---
+with st.expander(
+    "📦 실시간 상품별 재고 현황 및 관리 (클릭하여 열기)", expanded=True
+):
+  st.write("현재 창고에 남아 있는 상품별 실시간 재고 현황입니다.")
+  inv_df = pd.DataFrame(
+      list(st.session_state["inventory"].items()),
+      columns=["상품명", "현재고수량"],
+  )
+  st.dataframe(inv_df, use_container_width=True)
+
+  # 재고 수동 보정 기능
+  with st.form("inventory_form"):
+    st.write("🔧 재고 수동 조정")
+    col_i1, col_i2, col_i3 = st.columns([3, 2, 1])
+    with col_i1:
+      selected_item = st.selectbox(
+          "상품 선택", list(st.session_state["inventory"].keys())
+      )
+    with col_i2:
+      add_qty = st.number_input(
+          "입고/조정 수량 (+/-)", value=0, step=1, format="%d"
+      )
+    with col_i3:
+      submitted_inv = st.form_submit_button("재고 반영")
+    if submitted_inv and add_qty != 0:
+      st.session_state["inventory"][selected_item] += add_qty
+      st.success(f"{selected_item} 재고가 성공적으로 반영되었습니다!")
+      st.rerun()
+
+st.markdown("---")
+
 # 1. 파일 업로드 섹션
 st.subheader("1. 발주서 파일 업로드")
 col1, col2 = st.columns(2)
@@ -150,7 +195,6 @@ with col2:
 
 
 def calculate_item_finance(product_name, option_name, channel):
-  """상품별 원가, 판매가, 배송비 및 부가세(별도) 적용 계산"""
   p_str = str(product_name)
   o_str = str(option_name)
   combined_text = p_str + " " + o_str
@@ -160,7 +204,6 @@ def calculate_item_finance(product_name, option_name, channel):
   shipping_fee = 0
   item_category = "기타상품"
 
-  # 1. 키스틱 (개당 113원, 배송비 2,900원)
   if "키스틱" in combined_text:
     shipping_fee = 2900
     if "40개" in combined_text:
@@ -172,21 +215,18 @@ def calculate_item_finance(product_name, option_name, channel):
       cost_price = 113 * 100
       item_category = "키스틱 15g x 100개"
 
-  # 2. 고추잡채만두 (1.2kg 1개당 4,700원, 배송비 3,900원)
   elif "만두" in combined_text or "고추잡채" in combined_text:
     shipping_fee = 3900
     selling_price = 13900
     cost_price = 4700
     item_category = "더 바삭한 중화 고추잡채 군만두 1.2kg"
 
-  # 3. 김말이튀김 (400g 1개 1,700원, 최소 3개 세트, 배송비 3,900원)
   elif "김말이" in combined_text:
     shipping_fee = 3900
     selling_price = 13900
     cost_price = 1700 * 3
-    item_category = "김말이튀김 400g (3개 세트)"
+    item_category = "김말이튀김400g"
 
-  # 4. 부산어묵바 시리즈 (배송비 4,300원, 부가세 별도 10% 추가 합산)
   elif "어묵바" in combined_text:
     shipping_fee = 4300
     if "매콤달콤" in combined_text or "매콤한맛" in combined_text:
@@ -211,7 +251,6 @@ def calculate_item_finance(product_name, option_name, channel):
     shipping_fee = 3000
     item_category = "기타상품"
 
-  # 순수익 계산식: 판매가 - 플랫폼 수수료 - 원가 - 배송비
   rate = fee_rates.get(channel, 0.10)
   platform_fee = selling_price * rate
   net_profit = selling_price - platform_fee - cost_price - shipping_fee
@@ -276,6 +315,9 @@ def process_custom_orders(shopmoa_df, always_df):
         qty = int(pd.to_numeric(qty_val, errors="coerce") or 1)
         msg = get_column_value(row, ["배송메세지", "배송메모", "고객요청사항"])
         order_id = get_column_value(row, ["주문번호", "주문아이디"])
+        invoice_no = get_column_value(
+            row, ["송장번호", "택배송장번호", "운송장번호"]
+        )
       else:
         sname = get_column_value(row, ["수령인", "수취인명"])
         phone = get_column_value(row, ["수령인 연락처", "전화번호"])
@@ -290,6 +332,9 @@ def process_custom_orders(shopmoa_df, always_df):
         qty = int(pd.to_numeric(qty_val, errors="coerce") or 1)
         msg = get_column_value(row, ["배송메모", "배송메세지"])
         order_id = get_column_value(row, ["주문아이디", "주문번호"])
+        invoice_no = get_column_value(
+            row, ["송장번호", "택배송장번호", "운송장번호"]
+        )
 
       fin = calculate_item_finance(p_name, opt_name, detected_channel)
 
@@ -317,6 +362,7 @@ def process_custom_orders(shopmoa_df, always_df):
           "상품수량": qty,
           "배송메세지1": msg,
           "주문번호": order_id,
+          "송장번호": invoice_no,
           "주문일": date_str,
           "판매처": detected_channel,
       }
@@ -362,6 +408,7 @@ def process_custom_orders(shopmoa_df, always_df):
           "품명": "",
           "판매처": row["판매처"],
           "주문번호": row["주문번호"],
+          "송장번호": row["송장번호"],
           "주문일": row["주문일"],
           "판매가": "",
           "정산금액": "",
@@ -387,7 +434,7 @@ def process_custom_orders(shopmoa_df, always_df):
           "발주일": "",
           "관리번호": "",
           "상태": "",
-          "송장번호": "",
+          "송장번호": row["송장번호"],
       }
 
     # 어묵바 분기 (가람식품)
@@ -406,9 +453,12 @@ def process_custom_orders(shopmoa_df, always_df):
         r_copy = create_garam_row(r_name, 1)
         r_copy["품명"] = target_name
         garam_rows.append(r_copy)
+        # 재고 차감 반영
+        if target_name in st.session_state["inventory"]:
+          st.session_state["inventory"][target_name] -= 1
 
     # 키스틱 분기
-    elif "키ส틱" in p_name or "키스틱" in opt_name:
+    elif "키스틱" in p_name or "키스틱" in opt_name:
       is_40 = "40개" in p_name or "40개" in opt_name
       base_name = str(row["원격_받는분성명"])
 
@@ -417,6 +467,7 @@ def process_custom_orders(shopmoa_df, always_df):
           r_copy = create_standard_row(base_name, 1)
           r_copy["상품명"] = "키스틱 15g x 100개"
           kistic_rows.append(r_copy)
+          st.session_state["inventory"]["키스틱 15g x 100개"] -= 1
         elif qty == 3:
           r1 = create_standard_row(base_name, 1)
           r1["상품명"] = "키스틱 15g x 40개"
@@ -424,14 +475,18 @@ def process_custom_orders(shopmoa_df, always_df):
           r2 = create_standard_row(f"{base_name}2", 1)
           r2["상품명"] = "키스틱 15g x 100개"
           kistic_rows.append(r2)
+          st.session_state["inventory"]["키스틱 15g x 40개"] -= 1
+          st.session_state["inventory"]["키스틱 15g x 100개"] -= 1
         else:
           r_copy = create_standard_row(base_name, qty)
           r_copy["상품명"] = "키스틱 15g x 40개"
           kistic_rows.append(r_copy)
+          st.session_state["inventory"]["키스틱 15g x 40개"] -= qty
       else:
         r_copy = create_standard_row(base_name, qty)
         r_copy["상품명"] = "키스틱 15g x 100개"
         kistic_rows.append(r_copy)
+        st.session_state["inventory"]["키스틱 15g x 100개"] -= qty
 
     # 만두 분기
     elif "만두" in p_name or "고추잡채" in p_name:
@@ -439,6 +494,9 @@ def process_custom_orders(shopmoa_df, always_df):
       r_copy = create_standard_row(base_name, qty)
       r_copy["상품명"] = "더 바삭한 중화 고추잡채 군만두 1.2kg"
       frozen_rows.append(r_copy)
+      st.session_state["inventory"][
+          "더 바삭한 중화 고추잡채 군만두 1.2kg"
+      ] -= qty
 
     # 김말이 분기
     elif "김말이" in p_name:
@@ -446,6 +504,7 @@ def process_custom_orders(shopmoa_df, always_df):
       r_copy = create_standard_row(base_name, qty * 3)
       r_copy["상품명"] = "김말이튀김400g"
       frozen_rows.append(r_copy)
+      st.session_state["inventory"]["김말이튀김400g"] -= qty * 3
 
   garam_cols = [
       "받는분성명",
@@ -462,6 +521,7 @@ def process_custom_orders(shopmoa_df, always_df):
       "품명",
       "판매처",
       "주문번호",
+      "송장번호",
       "주문일",
       "판매가",
       "정산금액",
@@ -491,120 +551,4 @@ def process_custom_orders(shopmoa_df, always_df):
   garam_df = (
       pd.DataFrame(garam_rows)[garam_cols]
       if garam_rows
-      else pd.DataFrame(columns=garam_cols)
-  )
-  kistic_df = (
-      pd.DataFrame(kistic_rows)[kistic_cols]
-      if kistic_rows
-      else pd.DataFrame(columns=kistic_cols)
-  )
-  frozen_df = (
-      pd.DataFrame(frozen_rows)[kistic_cols]
-      if frozen_rows
-      else pd.DataFrame(columns=kistic_cols)
-  )
-
-  return garam_df, kistic_df, frozen_df, sales_df, date_str
-
-
-# 2. 실행 및 다운로드 섹션
-st.markdown("---")
-st.subheader("2. 발주서 변환 및 누적 데이터 반영 실행")
-
-col_btn1, col_btn2, col_btn3 = st.columns([2, 2, 1])
-
-with col_btn1:
-  run_clicked = st.button(
-      "🚀 발주서 변환 및 누적 수익 데이터 반영", type="primary"
-  )
-
-with col_btn2:
-  current_date_str = datetime.now().strftime("%Y-%m-%d")
-  zip_buffer = io.BytesIO()
-  with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-    if not st.session_state["accumulated_garam"].empty:
-      g_io = io.BytesIO()
-      with pd.ExcelWriter(g_io, engine="openpyxl") as writer:
-        st.session_state["accumulated_garam"].to_excel(writer, index=False)
-      zip_file.writestr(
-          f"가람식품_통합누적_발주서_{current_date_str}.xlsx", g_io.getvalue()
-      )
-
-    if not st.session_state["accumulated_kistic"].empty:
-      k_io = io.BytesIO()
-      with pd.ExcelWriter(k_io, engine="openpyxl") as writer:
-        st.session_state["accumulated_kistic"].to_excel(writer, index=False)
-      zip_file.writestr(
-          f"키스틱_통합누적_발주서_{current_date_str}.xlsx", k_io.getvalue()
-      )
-
-    if not st.session_state["accumulated_frozen"].empty:
-      f_io = io.BytesIO()
-      with pd.ExcelWriter(f_io, engine="openpyxl") as writer:
-        st.session_state["accumulated_frozen"].to_excel(writer, index=False)
-      zip_file.writestr(
-          f"냉동식품_통합누적_발주서_{current_date_str}.xlsx", f_io.getvalue()
-      )
-  zip_buffer.seek(0)
-
-  st.download_button(
-      label="📥 누적 통합 발주서 ZIP 다운로드",
-      data=zip_buffer,
-      file_name=f"마켓지니_전체누적_통합발주서_{current_date_str}.zip",
-      mime="application/zip",
-  )
-
-with col_btn3:
-  if st.button("🧹 전체 초기화"):
-    st.session_state["accumulated_sales"] = pd.DataFrame()
-    st.session_state["accumulated_garam"] = pd.DataFrame()
-    st.session_state["accumulated_kistic"] = pd.DataFrame()
-    st.session_state["accumulated_frozen"] = pd.DataFrame()
-    st.success("초기화 완료")
-    st.rerun()
-
-if run_clicked:
-  if shopmoa_file is None and always_file is None:
-    st.warning("최소 한 개 이상의 발주서 파일을 업로드해 주세요.")
-  else:
-    try:
-      s_df = pd.read_excel(shopmoa_file) if shopmoa_file else None
-      a_df = pd.read_excel(always_file) if always_file else None
-
-      garam_df, kistic_df, frozen_df, sales_df, date_str = (
-          process_custom_orders(s_df, a_df)
-      )
-
-      if not sales_df.empty:
-        st.session_state["accumulated_sales"] = pd.concat(
-            [st.session_state["accumulated_sales"], sales_df], ignore_index=True
-        )
-      if not garam_df.empty:
-        st.session_state["accumulated_garam"] = pd.concat(
-            [st.session_state["accumulated_garam"], garam_df], ignore_index=True
-        )
-      if not kistic_df.empty:
-        st.session_state["accumulated_kistic"] = pd.concat(
-            [
-                st.session_state["accumulated_kistic"],
-                kistic_df,
-            ],
-            ignore_index=True,
-        )
-      if not frozen_df.empty:
-        st.session_state["accumulated_frozen"] = pd.concat(
-            [
-                st.session_state["accumulated_frozen"],
-                frozen_df,
-            ],
-            ignore_index=True,
-        )
-
-      st.success(
-          f"✨ 새로운 발주 데이터가 성공적으로 누적 반영되었습니다! (기준일자:"
-          f" {date_str})"
-      )
-      st.rerun()
-
-    except Exception as e:
-      st.error(f"파일 처리 중 오류가 발생했습니다: {e}")
+      else pd.DataFrame(columns=
