@@ -199,6 +199,3 @@ if not acc_sales.empty:
             주문건수=("판매가", "count"),
             매출액=("판매가", "sum"),
             순수익=("순수익", "sum"),
-        )
-        .reset_index()
-    )
