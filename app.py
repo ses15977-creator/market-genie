@@ -103,7 +103,7 @@ st.write(
     " 실시간 재고 차감 및 4개 공급사별 발주서 분류를 지원합니다."
 )
 
-# ⚙️ 플랫폼 수수료율 설정
+# ⚙️️ 플랫폼 수수료율 설정
 with st.expander("⚙️ 플랫폼 수수료율 상세 설정 (클릭하여 열기)", expanded=False):
   col_f1, col_f2, col_f3, col_f4, col_f5, col_f6 = st.columns(6)
   with col_f1:
@@ -163,4 +163,29 @@ if not acc_sales.empty:
       delta=(
           f"마진율 {(total_net_profit/total_revenue*100):.1f}%"
           if total_revenue > 0
-          else
+          else "0%"
+      ),
+  )
+
+  with st.expander("🛒 플랫폼별 및 일자별 상세 내역 보기"):
+    target_platforms = [
+        "스마트스토어",
+        "옥션",
+        "지마켓",
+        "올웨이즈",
+        "쿠팡",
+        "카카오쇼핑하기",
+    ]
+    st.markdown("##### 플랫폼별 누적 현황")
+    platform_summary = (
+        acc_sales.groupby("판매처")
+        .agg(
+            주문건수=("판매가", "count"),
+            총판매가=("판매가", "sum"),
+            총원가=("원가", "sum"),
+            총배송비=("배송비", "sum"),
+            플랫폼수수료합계=("플랫폼수수료", "sum"),
+            총순수익=("순수익", "sum"),
+        )
+        .reindex(target_platforms)
+        .fillna(0)
