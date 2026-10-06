@@ -103,7 +103,7 @@ st.write(
     " 실시간 재고 차감 및 4개 공급사별 발주서 분류를 지원합니다."
 )
 
-# ⚙️️ 플랫폼 수수료율 설정
+# ⚙ 플랫폼 수수료율 설정
 with st.expander("⚙️ 플랫폼 수수료율 상세 설정 (클릭하여 열기)", expanded=False):
   col_f1, col_f2, col_f3, col_f4, col_f5, col_f6 = st.columns(6)
   with col_f1:
@@ -189,3 +189,34 @@ if not acc_sales.empty:
         )
         .reindex(target_platforms)
         .fillna(0)
+        .reset_index()
+    )
+    st.dataframe(platform_summary, use_container_width=True)
+
+    st.markdown("##### 업로드 일자별 누적 현황")
+    date_summary = (
+        acc_sales.groupby("업로드일자")
+        .agg(
+            주문건수=("판매가", "count"),
+            매출액=("판매가", "sum"),
+            순수익=("순수익", "sum"),
+        )
+        .reset_index()
+    )
+    st.dataframe(date_summary, use_container_width=True)
+else:
+  st.info(
+      "아직 업로드 및 반영된 데이터가 없습니다. 아래에서 발주서 파일을 업로드해"
+      " 주세요."
+  )
+
+st.markdown("---")
+
+# --- [상품 마스터 및 재고 관리 섹션] ---
+tab_inv, tab_prod, tab_history = st.tabs([
+    "📦 실시간 재고 관리",
+    "🏷 상품 마스터 관리 (공급사 카테고리 지정)",
+    "📥 등록된 원본 발주서 확인 및 재다운로드",
+])
+
+with tab_inv
