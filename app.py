@@ -101,7 +101,7 @@ st.write(
     " 그리고 마스터 연동 출고처 자동 분류가 지원됩니다."
 )
 
-# ⚙️️ 플랫폼 수수료율 설정
+# ⚙ 플랫폼 수수료율 설정
 with st.expander("⚙️ 플랫폼 수수료율 상세 설정 (클릭하여 열기)", expanded=False):
   col_f1, col_f2, col_f3, col_f4, col_f5, col_f6 = st.columns(6)
   with col_f1:
@@ -192,4 +192,40 @@ if not acc_sales.empty:
     st.dataframe(platform_summary, use_container_width=True)
 
     st.markdown("##### 업로드 일자별 누적 현황")
-    date_summary =
+    date_summary = (
+        acc_sales.groupby("업로드일자")
+        .agg(
+            주문건수=("판매가", "count"),
+            매출액=("판매가", "sum"),
+            순수익=("순수익", "sum"),
+        )
+        .reset_index()
+    )
+    st.dataframe(date_summary, use_container_width=True)
+else:
+  st.info(
+      "아직 업로드 및 반영된 데이터가 없습니다. 아래에서 발주서 파일을 업로드해"
+      " 주세요."
+  )
+
+st.markdown("---")
+
+# --- [상품 마스터 및 재고 관리 섹션] ---
+tab_inv, tab_prod, tab_history = st.tabs([
+    "📦 실시간 재고 관리",
+    "🏷 상품 마스터 관리 (출고처 설정)",
+    "📥 등록된 원본 발주서 확인 및 재다운로드",
+])
+
+with tab_inv:
+  st.write("현재 창고에 남아 있는 상품별 실시간 재고 현황입니다.")
+  inv_df = pd.DataFrame(
+      list(st.session_state["inventory"].items()),
+      columns=["상품명", "현재고수량"],
+  )
+  st.dataframe(inv_df, use_container_width=True)
+
+  with st.form("inventory_form"):
+    st.write("🔧 재고 수동 조정")
+    col_i1, col_i2, col_i3 = st.columns([3, 2, 1])
+    with col_i1:
