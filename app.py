@@ -4,12 +4,12 @@ import zipfile
 import pandas as pd
 import streamlit as st
 
-# ?섏씠吏 ?ㅼ젙
+# 페이지 설정
 st.set_page_config(
-    page_title="留덉폆吏???듯빀 ?먮ℓ愿由??꾨줈洹몃옩", page_icon="?벀", layout="centered"
+    page_title="마켓지니 판매관리 프로그램", page_icon="📦", layout="centered"
 )
 
-# 1. ?몄뀡 ?곹깭 珥덇린??(?꾩쟻 ?곗씠??諛??ш퀬/?곹뭹 留덉뒪??愿由?
+# 세션 상태 초기화 (누적 데이터 저장용)
 if "accumulated_sales" not in st.session_state:
   st.session_state["accumulated_sales"] = pd.DataFrame()
 if "accumulated_garam" not in st.session_state:
@@ -19,384 +19,149 @@ if "accumulated_kistic" not in st.session_state:
 if "accumulated_frozen" not in st.session_state:
   st.session_state["accumulated_frozen"] = pd.DataFrame()
 
-# 珥덇린 ?ш퀬 ?ㅼ젙
-if "inventory" not in st.session_state:
-  st.session_state["inventory"] = {
-      "?ㅼ뒪??15g x 40媛?: 500,
-      "?ㅼ뒪??15g x 100媛?: 500,
-      "??諛붿궘??以묓솕 怨좎텛?≪콈 援곕쭔??1.2kg": 300,
-      "源留먯씠?源400g": 400,
-      "?ㅻ━吏??遺?곗뼱臾듬컮 80g x 10媛?: 300,
-      "留ㅼ숴?ъ숴 遺?곗뼱臾듬컮 80g x 10媛?: 300,
-      "?ㅼ쭠?댁빞梨?遺?곗뼱臾듬컮 80g x 10媛?: 300,
-      "泥대떎移섏쫰 遺?곗뼱臾듬컮 80g x 10媛?: 300,
-  }
-
-# ?썱截??곹뭹 留덉뒪??愿由?(?먮ℓ媛, ?먭?, 諛곗넚鍮? 遺媛?몃퀎???щ? ?ㅼ젙)
-if "product_master" not in st.session_state:
-  st.session_state["product_master"] = {
-      "?ㅼ뒪??15g x 40媛?: {
-          "selling_price": 9900,
-          "cost_price": 113 * 40,
-          "shipping_fee": 2900,
-          "vat_separate": False,
-      },
-      "?ㅼ뒪??15g x 100媛?: {
-          "selling_price": 19900,
-          "cost_price": 113 * 100,
-          "shipping_fee": 2900,
-          "vat_separate": False,
-      },
-      "??諛붿궘??以묓솕 怨좎텛?≪콈 援곕쭔??1.2kg": {
-          "selling_price": 13900,
-          "cost_price": 4700,
-          "shipping_fee": 3900,
-          "vat_separate": False,
-      },
-      "源留먯씠?源400g": {
-          "selling_price": 13900,
-          "cost_price": 1700 * 3,
-          "shipping_fee": 3900,
-          "vat_separate": False,
-      },
-      "?ㅻ━吏??遺?곗뼱臾듬컮 80g x 10媛?: {
-          "selling_price": 18900,
-          "cost_price": int(536 * 1.1 * 10),
-          "shipping_fee": 4300,
-          "vat_separate": True,
-      },
-      "留ㅼ숴?ъ숴 遺?곗뼱臾듬컮 80g x 10媛?: {
-          "selling_price": 19900,
-          "cost_price": int(560 * 1.1 * 10),
-          "shipping_fee": 4300,
-          "vat_separate": True,
-      },
-      "?ㅼ쭠?댁빞梨?遺?곗뼱臾듬컮 80g x 10媛?: {
-          "selling_price": 20900,
-          "cost_price": int(575 * 1.1 * 10),
-          "shipping_fee": 4300,
-          "vat_separate": True,
-      },
-      "泥대떎移섏쫰 遺?곗뼱臾듬컮 80g x 10媛?: {
-          "selling_price": 21900,
-          "cost_price": int(646 * 1.1 * 10),
-          "shipping_fee": 4300,
-          "vat_separate": True,
-      },
-  }
-
-st.title("?벀 留덉폆吏???먮ℓ 諛??ш퀬 愿由??꾨줈洹몃옩")
+st.title("📦 마켓지니 판매관리 프로그램")
 st.write(
-    "諛쒖＜???낅줈?????뚯씪 ???좎쭨 湲곗? 以묐났 寃利? ?ㅼ떆媛??ш퀬 李④컧, ?뚮옯??
-    " ?섏닔猷?諛??깅줉???곹뭹 湲곗? ?쒖닔?듭씠 ?먮룞 ?뺤궛?⑸땲??"
+    "발주서 파일을 업로드하면, 플랫폼별 수수료율에 따른 매출 및 순수익을 분석하고,"
+    " 공급처별 통합 발주서를 생성합니다."
 )
 
-# ?숋툘 ?뚮옯???섏닔猷뚯쑉 ?ㅼ젙
-with st.expander("?숋툘 ?뚮옯???섏닔猷뚯쑉 ?곸꽭 ?ㅼ젙 (?대┃?섏뿬 ?닿린)", expanded=False):
+# ⚙️ 플랫폼 수수료율 설정
+with st.expander("⚙️ 플랫폼 수수료율 상세 설정 (클릭하여 열기)", expanded=False):
   col_f1, col_f2, col_f3, col_f4, col_f5, col_f6 = st.columns(6)
   with col_f1:
     fee_smart = st.number_input(
-        "?ㅻ쭏?몄뒪?좎뼱", value=5.80, step=0.1, format="%.2f"
+        "스마트스토어", value=5.80, step=0.1, format="%.2f"
     )
   with col_f2:
-    fee_always = st.number_input("?ъ썾?댁쫰", value=5.50, step=0.1, format="%.2f")
+    fee_always = st.number_input("올웨이즈", value=5.50, step=0.1, format="%.2f")
   with col_f3:
-    fee_coupang = st.number_input("荑좏뙜", value=10.80, step=0.1, format="%.2f")
+    fee_coupang = st.number_input("쿠팡", value=10.80, step=0.1, format="%.2f")
   with col_f4:
-    fee_gmarket = st.number_input("吏留덉폆", value=13.00, step=0.1, format="%.2f")
+    fee_gmarket = st.number_input("지마켓", value=13.00, step=0.1, format="%.2f")
   with col_f5:
-    fee_auction = st.number_input("?μ뀡", value=13.00, step=0.1, format="%.2f")
+    fee_auction = st.number_input("옥션", value=13.00, step=0.1, format="%.2f")
   with col_f6:
     fee_kakao = st.number_input(
-        "移댁뭅?ㅼ눥?묓븯湲?, value=10.00, step=0.1, format="%.2f"
+        "카카오쇼핑하기", value=10.00, step=0.1, format="%.2f"
     )
 
 fee_rates = {
-    "?ㅻ쭏?몄뒪?좎뼱": fee_smart / 100.0,
-    "?ㅼ씠踰?: fee_smart / 100.0,
-    "?ъ썾?댁쫰": fee_always / 100.0,
-    "荑좏뙜": fee_coupang / 100.0,
-    "吏留덉폆": fee_gmarket / 100.0,
-    "G留덉폆": fee_gmarket / 100.0,
-    "?μ뀡": fee_auction / 100.0,
-    "移댁뭅?ㅼ눥?묓븯湲?: fee_kakao / 100.0,
-    "移댁뭅??: fee_kakao / 100.0,
+    "스마트스토어": fee_smart / 100.0,
+    "네이버": fee_smart / 100.0,
+    "올웨이즈": fee_always / 100.0,
+    "쿠팡": fee_coupang / 100.0,
+    "지마켓": fee_gmarket / 100.0,
+    "G마켓": fee_gmarket / 100.0,
+    "옥션": fee_auction / 100.0,
+    "카카오쇼핑하기": fee_kakao / 100.0,
+    "카카오": fee_kakao / 100.0,
 }
 
 st.markdown("---")
 
-# --- [?곷떒 怨좎젙 ?꾩쟻 留ㅼ텧 諛??쒖닔????쒕낫?? ---
-st.subheader("?뱤 [?꾩쟻 ?곗씠?? ?꾩껜 留ㅼ텧 諛??쒖닔???붿빟 ??쒕낫??)
-
-acc_sales = st.session_state["accumulated_sales"]
-
-if not acc_sales.empty:
-  total_orders = len(acc_sales)
-  total_revenue = acc_sales["?먮ℓ媛"].sum()
-  total_cost = acc_sales["?먭?"].sum()
-  total_shipping = acc_sales["諛곗넚鍮?].sum()
-  total_platform_fee = acc_sales["?뚮옯?쇱닔?섎즺"].sum()
-  total_net_profit = acc_sales["?쒖닔??].sum()
-
-  m1, m2, m3, m4 = st.columns(4)
-  m1.metric("?꾩쟻 珥?二쇰Ц 嫄댁닔", f"{total_orders:,} 嫄?)
-  m2.metric("?꾩쟻 珥??먮ℓ 留ㅼ텧??, f"{total_revenue:,.0f} ??)
-  m3.metric(
-      "?먭?+諛곗넚+?섏닔猷??⑷퀎",
-      f"{(total_cost + total_shipping + total_platform_fee):,.0f} ??,
-  )
-  m4.metric(
-      "?꾩쟻 珥??쒖닔??,
-      f"{total_net_profit:,.0f} ??,
-      delta=(
-          f"留덉쭊??{(total_net_profit/total_revenue*100):.1f}%"
-          if total_revenue > 0
-          else "0%"
-      ),
-  )
-
-  with st.expander("?썟 ?뚮옯?쇰퀎 諛??쇱옄蹂??곸꽭 ?댁뿭 蹂닿린"):
-    target_platforms = [
-        "?ㅻ쭏?몄뒪?좎뼱",
-        "?μ뀡",
-        "吏留덉폆",
-        "?ъ썾?댁쫰",
-        "荑좏뙜",
-        "移댁뭅?ㅼ눥?묓븯湲?,
-    ]
-    st.markdown("##### ?뚮옯?쇰퀎 ?꾩쟻 ?꾪솴")
-    platform_summary = (
-        acc_sales.groupby("?먮ℓ泥?)
-        .agg(
-            二쇰Ц嫄댁닔=("?먮ℓ媛", "count"),
-            珥앺뙋留ㅺ?=("?먮ℓ媛", "sum"),
-            珥앹썝媛=("?먭?", "sum"),
-            珥앸같?〓퉬=("諛곗넚鍮?, "sum"),
-            ?뚮옯?쇱닔?섎즺?⑷퀎=("?뚮옯?쇱닔?섎즺", "sum"),
-            珥앹닚?섏씡=("?쒖닔??, "sum"),
-        )
-        .reindex(target_platforms)
-        .fillna(0)
-        .reset_index()
-    )
-    st.dataframe(platform_summary, use_container_width=True)
-
-    st.markdown("##### ?낅줈???쇱옄蹂??꾩쟻 ?꾪솴")
-    date_summary = (
-        acc_sales.groupby("?낅줈?쒖씪??)
-        .agg(
-            二쇰Ц嫄댁닔=("?먮ℓ媛", "count"),
-            留ㅼ텧??("?먮ℓ媛", "sum"),
-            ?쒖닔??("?쒖닔??, "sum"),
-        )
-        .reset_index()
-    )
-    st.dataframe(date_summary, use_container_width=True)
-else:
-  st.info(
-      "?꾩쭅 ?낅줈??諛?諛섏쁺???곗씠?곌? ?놁뒿?덈떎. ?꾨옒?먯꽌 諛쒖＜???뚯씪???낅줈?쒗빐"
-      " 二쇱꽭??"
-  )
-
-st.markdown("---")
-
-# --- [?곹뭹 留덉뒪??諛??ш퀬 愿由??뱀뀡] ---
-tab_inv, tab_prod = st.tabs(["?벀 ?ㅼ떆媛??ш퀬 愿由?, "?뤇截??곹뭹 留덉뒪??愿由?(?좉퇋 ?깅줉)"])
-
-with tab_inv:
-  st.write("?꾩옱 李쎄퀬???⑥븘 ?덈뒗 ?곹뭹蹂??ㅼ떆媛??ш퀬 ?꾪솴?낅땲??")
-  inv_df = pd.DataFrame(
-      list(st.session_state["inventory"].items()),
-      columns=["?곹뭹紐?, "?꾩옱怨좎닔??],
-  )
-  st.dataframe(inv_df, use_container_width=True)
-
-  with st.form("inventory_form"):
-    st.write("?뵩 ?ш퀬 ?섎룞 議곗젙")
-    col_i1, col_i2, col_i3 = st.columns([3, 2, 1])
-    with col_i1:
-      selected_item = st.selectbox(
-          "?곹뭹 ?좏깮", list(st.session_state["inventory"].keys())
-      )
-    with col_i2:
-      add_qty = st.number_input(
-          "?낃퀬/議곗젙 ?섎웾 (+/-)", value=0, step=1, format="%d"
-      )
-    with col_i3:
-      submitted_inv = st.form_submit_button("?ш퀬 諛섏쁺")
-    if submitted_inv and add_qty != 0:
-      st.session_state["inventory"][selected_item] += add_qty
-      st.success(f"{selected_item} ?ш퀬媛 ?깃났?곸쑝濡?諛섏쁺?섏뿀?듬땲??")
-      st.rerun()
-
-with tab_prod:
-  st.write(
-      "?깅줉???곹뭹?ㅼ쓽 ?먮ℓ媛, ?먭?, 諛곗넚鍮?湲곗????뺤씤?섍굅???덈줈???곹뭹??
-      " 異붽??????덉뒿?덈떎."
-  )
-  prod_list = []
-  for p_name, p_info in st.session_state["product_master"].items():
-    prod_list.append({
-        "?곹뭹紐?: p_name,
-        "?먮ℓ媛": p_info["selling_price"],
-        "?먭?": p_info["cost_price"],
-        "諛곗넚鍮?: p_info["shipping_fee"],
-        "遺媛?몃퀎?꾩뿬遺": "蹂꾨룄(10%媛??"
-        if p_info["vat_separate"]
-        else "?ы븿",
-    })
-  st.dataframe(pd.DataFrame(prod_list), use_container_width=True)
-
-  with st.form("new_product_form"):
-    st.write("???좎긽???깅줉 / 湲곗〈 ?곹뭹 ?섏젙")
-    cp1, cp2, cp3 = st.columns(3)
-    with cp1:
-      new_p_name = st.text_input("?곹뭹紐?(?듭뀡 ?ы븿 ?뺥솗???낅젰)")
-      new_s_price = st.number_input("?먮ℓ媛 (??", value=10000, step=100)
-    with cp2:
-      new_c_price = st.number_input("?먭? (??", value=5000, step=100)
-      new_ship = st.number_input("諛곗넚鍮?(??", value=3000, step=100)
-    with cp3:
-      new_vat = st.checkbox("遺媛??蹂꾨룄 (怨듦툒媛??10% 異붽? 怨꾩궛)")
-      new_inv_qty = st.number_input("珥덇린 ?ш퀬 ?섎웾", value=100, step=10)
-
-    submitted_prod = st.form_submit_button("?곹뭹 ?깅줉/??ν븯湲?)
-    if submitted_prod and new_p_name:
-      st.session_state["product_master"][new_p_name] = {
-          "selling_price": new_s_price,
-          "cost_price": new_c_price,
-          "shipping_fee": new_ship,
-          "vat_separate": new_vat,
-      }
-      if new_p_name not in st.session_state["inventory"]:
-        st.session_state["inventory"][new_p_name] = new_inv_qty
-      st.success(f"'{new_p_name}' ?곹뭹???깃났?곸쑝濡??깅줉?섏뿀?듬땲??")
-      st.rerun()
-
-st.markdown("---")
-
-# 1. ?뚯씪 ?낅줈???뱀뀡
-st.subheader("1. 諛쒖＜???뚯씪 ?낅줈??)
+# 1. 파일 업로드 섹션
+st.subheader("1. 발주서 파일 업로드")
 col1, col2 = st.columns(2)
 
 with col1:
   shopmoa_file = st.file_uploader(
-      "?듬え??/ ?듯빀 諛쒖＜???뚯씪 (.xlsx)", type=["xlsx", "xls"], key="shopmoa"
+      "샵모아 / 통합 발주서 파일 (.xlsx)", type=["xlsx", "xls"], key="shopmoa"
   )
 
 with col2:
   always_file = st.file_uploader(
-      "?ъ썾?댁쫰 諛쒖＜???뚯씪 (.xlsx)", type=["xlsx", "xls"], key="always"
+      "올웨이즈 발주서 파일 (.xlsx)", type=["xlsx", "xls"], key="always"
   )
 
 
 def calculate_item_finance(product_name, option_name, channel):
+  """상품별 원가, 배송비, 판매가 계산 및 플랫폼 수수료 적용"""
   p_str = str(product_name)
   o_str = str(option_name)
   combined_text = p_str + " " + o_str
 
-  matched_key = "湲고??곹뭹"
-  for key in st.session_state["product_master"].keys():
-    # ?ㅼ썙??留ㅼ묶 (?? ?ㅼ뒪?? 留뚮몢, 源留먯씠, ?대У諛??몃???ぉ)
-    keywords = key.split()
-    if all(kw in combined_text for kw in keywords[:2]):
-      matched_key = key
-      break
-    elif "?ㅼ뒪?? in combined_text and "?ㅼ뒪?? in key:
-      if "40媛? in combined_text and "40媛? in key:
-        matched_key = key
-        break
-      elif "100媛? in combined_text and "100媛? in key:
-        matched_key = key
-        break
-    elif "留뚮몢" in combined_text or "怨좎텛?≪콈" in combined_text:
-      if "留뚮몢" in key or "怨좎텛?≪콈" in key:
-        matched_key = key
-        break
-    elif "源留먯씠" in combined_text and "源留먯씠" in key:
-      matched_key = key
-      break
-    elif "?대У諛? in combined_text and "?대У諛? in key:
-      if "留ㅼ숴" in combined_text and "留ㅼ숴" in key:
-        matched_key = key
-        break
-      elif "?ㅼ쭠?? in combined_text and "?ㅼ쭠?? in key:
-        matched_key = key
-        break
-      elif "泥대떎" in combined_text and "泥대떎" in key:
-        matched_key = key
-        break
-      elif "?ㅻ━吏?? in combined_text and "?ㅻ━吏?? in key:
-        matched_key = key
-        break
+  selling_price = 0
+  cost_price = 0
+  shipping_fee = 0
+  item_category = "기타상품"
 
-  if matched_key in st.session_state["product_master"]:
-    p_info = st.session_state["product_master"][matched_key]
-    selling_price = p_info["selling_price"]
-    cost_price = p_info["cost_price"]
-    shipping_fee = p_info["shipping_fee"]
-    item_category = matched_key
+  # 1. 키스틱
+  if "키스틱" in combined_text:
+    shipping_fee = 2900
+    if "40개" in combined_text:
+      selling_price = 9900
+      cost_price = 113 * 40
+      item_category = "키스틱 15g x 40개"
+    else:
+      selling_price = 19900
+      cost_price = 113 * 100
+      item_category = "키스틱 15g x 100개"
+
+  # 2. 고추잡채만두
+  elif "만두" in combined_text or "고추잡채" in combined_text:
+    shipping_fee = 3900
+    selling_price = 13900
+    cost_price = 4700
+    item_category = "더 바삭한 중화 고추잡채 군만두 1.2kg"
+
+  # 3. 김말이튀김
+  elif "김말이" in combined_text:
+    shipping_fee = 3900
+    selling_price = 13900
+    cost_price = 1700 * 3
+    item_category = "김말이튀김 400g (3개 세트)"
+
+  # 4. 부산어묵바
+  elif "어묵바" in combined_text:
+    shipping_fee = 4300
+    if "매콤달콤" in combined_text:
+      selling_price = 19900
+      cost_price = int(560 * 1.1 * 10)
+      item_category = "매콤달콤 부산어묵바 80g x 10개"
+    elif "오징어야채" in combined_text:
+      selling_price = 20900
+      cost_price = int(575 * 1.1 * 10)
+      item_category = "오징어야채 부산어묵바 80g x 10개"
+    elif "체다치즈" in combined_text:
+      selling_price = 21900
+      cost_price = int(646 * 1.1 * 10)
+      item_category = "체다치즈 부산어묵바 80g x 10개"
+    else:
+      selling_price = 18900
+      cost_price = int(536 * 1.1 * 10)
+      item_category = "오리지날 부산어묵바 80g x 10개"
   else:
     selling_price = 10000
     cost_price = 5000
     shipping_fee = 3000
-    item_category = "湲고??곹뭹"
+    item_category = "기타상품"
 
   rate = fee_rates.get(channel, 0.10)
   platform_fee = selling_price * rate
-  net_profit = selling_price - platform_fee - cost_price - shipping_fee
+  net_profit = selling_price - cost_price - shipping_fee - platform_fee
 
   return {
-      "移댄뀒怨좊━": item_category,
-      "?먮ℓ媛": selling_price,
-      "?먭?": cost_price,
-      "諛곗넚鍮?: shipping_fee,
-      "?뚮옯?쇱닔?섎즺": platform_fee,
-      "?쒖닔??: net_profit,
+      "카테고리": item_category,
+      "판매가": selling_price,
+      "원가": cost_price,
+      "배송비": shipping_fee,
+      "플랫폼수수료": platform_fee,
+      "순수익": net_profit,
   }
 
 
 def get_column_value(row, possible_cols, default=""):
+  """여러 후보 컬럼명 중 존재하는 첫 번째 값을 안전하게 반환"""
   for col in possible_cols:
     if col in row and pd.notna(row[col]):
       return str(row[col])
   return default
 
 
-def extract_order_date(df):
-  """?묒? ?뚯씪 ?댁뿉???좎쭨 ?뺥깭(YYYY-MM-DD ?먮뒗 YYYYMMDD)瑜??먯깋"""
-  for col in df.columns:
-    for val in df[col].dropna().astype(str):
-      val_clean = val.strip()
-      # ?좎쭨 ?⑦꽩 ?먯깋 ?쒕룄 (?? 2026-09-21 ?먮뒗 26-09-21 ??
-      if (
-          len(val_clean) >= 8
-          and ("-" in val_clean or val_clean.isdigit())
-          and ("202" in val_clean or "26" in val_clean)
-      ):
-        # YYYY-MM-DD ?뺥깭濡??뺢퇋???쒕룄
-        try:
-          parsed_date = pd.to_datetime(val_clean, errors="coerce")
-          if pd.notna(parsed_date):
-            return parsed_date.strftime("%Y-%m-%d")
-        except:
-          pass
-  return datetime.now().strftime("%Y-%m-%d")
-
-
 def process_custom_orders(shopmoa_df, always_df):
   frames = []
   sales_data_list = []
-
-  # ?낅줈?쒕맂 ?뚯씪?ㅼ뿉???좎쭨 異붿텧 (?곗꽑 ?쒖쐞: ?듬え??-> ?ъ썾?댁쫰 -> ?ㅻ뒛?좎쭨)
-  detected_date = None
-  for df_target in [shopmoa_df, always_df]:
-    if df_target is not None and not df_target.empty:
-      detected_date = extract_order_date(df_target)
-      if detected_date:
-        break
-  if not detected_date:
-    detected_date = datetime.now().strftime("%Y-%m-%d")
+  date_str = datetime.now().strftime("%Y-%m-%d")
 
   def parse_dataframe(df, default_channel_name):
     if df is None or df.empty:
@@ -405,92 +170,86 @@ def process_custom_orders(shopmoa_df, always_df):
       detected_channel = default_channel_name
       row_str = " ".join([str(val) for val in row.values])
 
-      if "荑좏뙜" in row_str:
-        detected_channel = "荑좏뙜"
-      elif "?ㅻ쭏?몄뒪?좎뼱" in row_str or "?ㅼ씠踰? in row_str:
-        detected_channel = "?ㅻ쭏?몄뒪?좎뼱"
-      elif "吏留덉폆" in row_str or "G留덉폆" in row_str:
-        detected_channel = "吏留덉폆"
-      elif "?μ뀡" in row_str:
-        detected_channel = "?μ뀡"
-      elif "移댁뭅?? in row_str or "?쇳븨?섍린" in row_str:
-        detected_channel = "移댁뭅?ㅼ눥?묓븯湲?
-      elif "?ъ썾?댁쫰" in row_str:
-        detected_channel = "?ъ썾?댁쫰"
+      # 채널 자동 감지
+      if "쿠팡" in row_str:
+        detected_channel = "쿠팡"
+      elif "스마트스토어" in row_str or "네이버" in row_str:
+        detected_channel = "스마트스토어"
+      elif "지마켓" in row_str or "G마켓" in row_str:
+        detected_channel = "지마켓"
+      elif "옥션" in row_str:
+        detected_channel = "옥션"
+      elif "카카오" in row_str or "쇼핑하기" in row_str:
+        detected_channel = "카카오쇼핑하기"
+      elif "올웨이즈" in row_str:
+        detected_channel = "올웨이즈"
 
-      if default_channel_name == "?듬え??:
-        sname = get_column_value(row, ["?섏랬?몃챸", "?섎졊??, "諛쏅뒗遺꾩꽦紐?])
+      if default_channel_name == "샵모아":
+        sname = get_column_value(row, ["수취인명", "수령인", "받는분성명"])
         phone = get_column_value(
-            row, ["?섏랬???꾪솕踰덊샇", "?섎졊???곕씫泥?, "?꾪솕踰덊샇"]
+            row, ["수취인 전화번호", "수령인 연락처", "전화번호"]
         )
         mobile = get_column_value(
-            row, ["?섏랬???몃뱶?곕쾲??, "?섎졊???몃뱶??, "?대??곕쾲??, "?몃뱶??]
+            row, ["수취인 핸드폰번호", "수령인 핸드폰", "휴대폰번호", "핸드폰"]
         )
         if not mobile:
           mobile = phone
-        zipcode = get_column_value(row, ["?고렪踰덊샇"])
-        address = get_column_value(row, ["?섏랬?몄＜??, "二쇱냼"])
-        p_name = get_column_value(row, ["?곹뭹紐?])
-        opt_name = get_column_value(row, ["?듭뀡", "?곹뭹?듭뀡"])
-        qty_val = get_column_value(row, ["?섎웾", "二쇰Ц?섎웾"], "1")
+        zipcode = get_column_value(row, ["우편번호"])
+        address = get_column_value(row, ["수취인주소", "주소"])
+        p_name = get_column_value(row, ["상품명"])
+        opt_name = get_column_value(row, ["옵션", "상품옵션"])
+        qty_val = get_column_value(row, ["수량", "주문수량"], "1")
         qty = int(pd.to_numeric(qty_val, errors="coerce") or 1)
-        msg = get_column_value(row, ["諛곗넚硫붿꽭吏", "諛곗넚硫붾え", "怨좉컼?붿껌?ы빆"])
-        order_id = get_column_value(row, ["二쇰Ц踰덊샇", "二쇰Ц?꾩씠??])
-        invoice_no = get_column_value(
-            row, ["?≪옣踰덊샇", "?앸같?≪옣踰덊샇", "?댁넚?λ쾲??]
-        )
+        msg = get_column_value(row, ["배송메세지", "배송메모", "고객요청사항"])
+        order_id = get_column_value(row, ["주문번호", "주문아이디"])
       else:
-        sname = get_column_value(row, ["?섎졊??, "?섏랬?몃챸"])
-        phone = get_column_value(row, ["?섎졊???곕씫泥?, "?꾪솕踰덊샇"])
-        mobile = get_column_value(row, ["?섎졊???몃뱶??, "?몃뱶??, "?대??곕쾲??])
+        sname = get_column_value(row, ["수령인", "수취인명"])
+        phone = get_column_value(row, ["수령인 연락처", "전화번호"])
+        mobile = get_column_value(row, ["수령인 핸드폰", "핸드폰", "휴대폰번호"])
         if not mobile:
           mobile = phone
-        zipcode = get_column_value(row, ["?고렪踰덊샇"])
-        address = get_column_value(row, ["二쇱냼", "?섏랬?몄＜??])
-        p_name = get_column_value(row, ["?곹뭹紐?])
-        opt_name = get_column_value(row, ["?듭뀡", "?곹뭹?듭뀡"])
-        qty_val = get_column_value(row, ["?섎웾", "二쇰Ц?섎웾"], "1")
+        zipcode = get_column_value(row, ["우편번호"])
+        address = get_column_value(row, ["주소", "수취인주소"])
+        p_name = get_column_value(row, ["상품명"])
+        opt_name = get_column_value(row, ["옵션", "상품옵션"])
+        qty_val = get_column_value(row, ["수량", "주문수량"], "1")
         qty = int(pd.to_numeric(qty_val, errors="coerce") or 1)
-        msg = get_column_value(row, ["諛곗넚硫붾え", "諛곗넚硫붿꽭吏"])
-        order_id = get_column_value(row, ["二쇰Ц?꾩씠??, "二쇰Ц踰덊샇"])
-        invoice_no = get_column_value(
-            row, ["?≪옣踰덊샇", "?앸같?≪옣踰덊샇", "?댁넚?λ쾲??]
-        )
+        msg = get_column_value(row, ["배송메모", "배송메세지"])
+        order_id = get_column_value(row, ["주문아이디", "주문번호"])
 
       fin = calculate_item_finance(p_name, opt_name, detected_channel)
 
       for _ in range(max(1, qty)):
         sales_data_list.append({
-            "?낅줈?쒖씪??: detected_date,
-            "?먮ℓ泥?: detected_channel,
-            "二쇰Ц踰덊샇": str(order_id),
-            "?곹뭹紐?: fin["移댄뀒怨좊━"],
-            "?먮ℓ媛": fin["?먮ℓ媛"],
-            "?먭?": fin["?먭?"],
-            "諛곗넚鍮?: fin["諛곗넚鍮?],
-            "?뚮옯?쇱닔?섎즺": fin["?뚮옯?쇱닔?섎즺"],
-            "?쒖닔??: fin["?쒖닔??],
+            "업로드일자": date_str,
+            "판매처": detected_channel,
+            "주문번호": str(order_id),
+            "상품명": fin["카테고리"],
+            "판매가": fin["판매가"],
+            "원가": fin["원가"],
+            "배송비": fin["배송비"],
+            "플랫폼수수료": fin["플랫폼수수료"],
+            "순수익": fin["순수익"],
         })
 
       base_row = {
-          "?먭꺽_諛쏅뒗遺꾩꽦紐?: sname,
-          "?먭꺽_諛쏅뒗遺꾩쟾?붾쾲??: phone,
-          "?먭꺽_諛쏅뒗遺꾧린??곕씫泥?: mobile,
-          "?먭꺽_諛쏅뒗遺꾩슦?몃쾲??: zipcode,
-          "?먭꺽_諛쏅뒗遺꾩＜??: address,
-          "?곹뭹紐??먮낯": p_name,
-          "?듭뀡_?먮낯": opt_name,
-          "?곹뭹?섎웾": qty,
-          "諛곗넚硫붿꽭吏1": msg,
-          "二쇰Ц踰덊샇": order_id,
-          "?≪옣踰덊샇": invoice_no,
-          "二쇰Ц??: detected_date,
-          "?먮ℓ泥?: detected_channel,
+          "원격_받는분성명": sname,
+          "원격_받는분전화번호": phone,
+          "원격_받는분기타연락처": mobile,
+          "원격_받는분우편번호": zipcode,
+          "원격_받는분주소": address,
+          "상품명_원본": p_name,
+          "옵션_원본": opt_name,
+          "상품수량": qty,
+          "배송메세지1": msg,
+          "주문번호": order_id,
+          "주문일": date_str,
+          "판매처": detected_channel,
       }
       frames.append(base_row)
 
-  parse_dataframe(shopmoa_df, "?듬え??)
-  parse_dataframe(always_df, "?ъ썾?댁쫰")
+  parse_dataframe(shopmoa_df, "샵모아")
+  parse_dataframe(always_df, "올웨이즈")
 
   if not frames:
     return (
@@ -498,7 +257,7 @@ def process_custom_orders(shopmoa_df, always_df):
         pd.DataFrame(),
         pd.DataFrame(),
         pd.DataFrame(),
-        detected_date,
+        date_str,
     )
 
   combined = pd.DataFrame(frames)
@@ -509,170 +268,150 @@ def process_custom_orders(shopmoa_df, always_df):
   frozen_rows = []
 
   for _, row in combined.iterrows():
-    p_name = str(row["?곹뭹紐??먮낯"])
-    opt_name = str(row["?듭뀡_?먮낯"])
-    qty = int(row["?곹뭹?섎웾"])
+    p_name = str(row["상품명_원본"])
+    opt_name = str(row["옵션_원본"])
+    qty = int(row["상품수량"])
 
     def create_garam_row(name, quantity):
       return {
-          "諛쏅뒗遺꾩꽦紐?: name,
-          "諛쏅뒗遺꾩쟾?붾쾲??: row["?먭꺽_諛쏅뒗遺꾩쟾?붾쾲??],
-          "諛쏅뒗遺꾧린??곕씫泥?: row["?먭꺽_諛쏅뒗遺꾧린??곕씫泥?],
-          "諛쏅뒗遺꾩슦?몃쾲??: row["?먭꺽_諛쏅뒗遺꾩슦?몃쾲??],
-          "諛쏅뒗遺꾩＜??: row["?먭꺽_諛쏅뒗遺꾩＜??],
-          "?댄뭹?섎웾": quantity,
-          "諛곗넚硫붿꽭吏1": row["諛곗넚硫붿꽭吏1"],
-          "異쒕젰??: "",
-          "?댁엫援щ텇": "",
-          "湲곕낯?댁엫": "",
-          "怨좉컼?ъ슜踰덊샇": "",
-          "?덈챸": "",
-          "?먮ℓ泥?: row["?먮ℓ泥?],
-          "二쇰Ц踰덊샇": row["二쇰Ц踰덊샇"],
-          "?≪옣踰덊샇": row["?≪옣踰덊샇"],
-          "二쇰Ц??: row["二쇰Ц??],
-          "?먮ℓ媛": "",
-          "?뺤궛湲덉븸": "",
-          "嫄곕옒泥섏퐫??: 16,
+          "받는분성명": name,
+          "받는분전화번호": row["원격_받는분전화번호"],
+          "받는분기타연락처": row["원격_받는분기타연락처"],
+          "받는분우편번호": row["원격_받는분우편번호"],
+          "받는분주소": row["원격_받는분주소"],
+          "내품수량": quantity,
+          "배송메세지1": row["배송메세지1"],
+          "출력일": "",
+          "운임구분": "",
+          "기본운임": "",
+          "고객사용번호": "",
+          "품명": "",
+          "판매처": row["판매처"],
+          "주문번호": row["주문번호"],
+          "주문일": row["주문일"],
+          "판매가": "",
+          "정산금액": "",
+          "거래처코드": 16,
       }
 
     def create_standard_row(name, quantity):
       return {
-          "?섎졊?먯씠由?: name,
-          "?섎졊?먯쟾??: row["?먭꺽_諛쏅뒗遺꾩쟾?붾쾲??],
-          "?섎졊?먰쑕???: row["?먭꺽_諛쏅뒗遺꾧린??곕씫泥?],
-          "?섎졊?먯슦?몃쾲??: row["?먭꺽_諛쏅뒗遺꾩슦?몃쾲??],
-          "?섎졊?먯＜??: row["?먭꺽_諛쏅뒗遺꾩＜??],
-          "?곹뭹?섎웾": quantity,
-          "諛곗넚硫붾え": row["諛곗넚硫붿꽭吏1"],
-          "?쒖“??: "",
-          "移댄뀒怨좊━": "",
-          "?덉젅": "",
-          "諛곗넚 蹂대쪟": "",
-          "?곹뭹紐?: "",
-          "?먮ℓ泥?: row["?먮ℓ泥?],
-          "二쇰Ц踰덊샇": row["二쇰Ц踰덊샇"],
-          "諛쒖＜??: "",
-          "愿由щ쾲??: "",
-          "?곹깭": "",
-          "?≪옣踰덊샇": row["?≪옣踰덊샇"],
+          "수령자이름": name,
+          "수령자전화": row["원격_받는분전화번호"],
+          "수령자휴대폰": row["원격_받는분기타연락처"],
+          "수령자우편번호": row["원격_받는분우편번호"],
+          "수령자주소": row["원격_받는분주소"],
+          "상품수량": quantity,
+          "배송메모": row["배송메세지1"],
+          "제조사": "",
+          "카테고리": "",
+          "품절": "",
+          "배송 보류": "",
+          "상품명": "",
+          "판매처": row["판매처"],
+          "주문번호": row["주문번호"],
+          "발주일": "",
+          "관리번호": "",
+          "상태": "",
+          "송장번호": "",
       }
 
-    # ?대У諛?遺꾧린 (媛?뚯떇??
-    if "?대У諛? in p_name or "?대У諛? in opt_name:
-      target_name = "?ㅻ━吏??遺?곗뼱臾듬컮 80g x 10媛?
-      if "留ㅼ숴?ъ숴" in opt_name or "留ㅼ숴?쒕쭧" in p_name:
-        target_name = "留ㅼ숴?ъ숴 遺?곗뼱臾듬컮 80g x 10媛?
-      elif "?ㅼ쭠?댁빞梨? in opt_name or "?ㅼ쭠?댁빞梨? in p_name:
-        target_name = "?ㅼ쭠?댁빞梨?遺?곗뼱臾듬컮 80g x 10媛?
-      elif "泥대떎移섏쫰" in opt_name or "泥대떎移섏쫰" in p_name:
-        target_name = "泥대떎移섏쫰 遺?곗뼱臾듬컮 80g x 10媛?
+    # 1. 어묵바 (가람식품) 분기
+    if "어묵바" in p_name or "어묵바" in opt_name:
+      target_name = "오리지날 부산어묵바 80g x 10개"
+      if "매콤달콤" in opt_name or "매콤달콤" in p_name:
+        target_name = "매콤달콤 부산어묵바 80g x 10개"
+      elif "오징어야채" in opt_name or "오징어야채" in p_name:
+        target_name = "오징어야채 부산어묵바 80g x 10개"
+      elif "체다치즈" in opt_name or "체다치즈" in p_name:
+        target_name = "체다치즈 부산어묵바 80g x 10개"
 
-      base_name = str(row["?먭꺽_諛쏅뒗遺꾩꽦紐?])
+      base_name = str(row["원격_받는분성명"])
       for i in range(qty):
         r_name = f"{base_name}{i+1}" if qty > 1 else base_name
         r_copy = create_garam_row(r_name, 1)
-        r_copy["?덈챸"] = target_name
+        r_copy["품명"] = target_name
         garam_rows.append(r_copy)
-        if target_name in st.session_state["inventory"]:
-          st.session_state["inventory"][target_name] -= 1
 
-    # ?ㅼ뒪??遺꾧린
-    elif "?ㅼ뒪?? in p_name or "?ㅼ뒪?? in opt_name:
-      is_40 = "40媛? in p_name or "40媛? in opt_name
-      base_name = str(row["?먭꺽_諛쏅뒗遺꾩꽦紐?])
+    # 2. 키스틱 분기
+    elif "키스틱" in p_name or "키스틱" in opt_name:
+      is_40 = "40개" in p_name or "40개" in opt_name
+      base_name = str(row["원격_받는분성명"])
 
       if is_40:
         if qty == 2:
           r_copy = create_standard_row(base_name, 1)
-          r_copy["?곹뭹紐?] = "?ㅼ뒪??15g x 100媛?
+          r_copy["상품명"] = "키스틱 15g x 100개"
           kistic_rows.append(r_copy)
-          if "?ㅼ뒪??15g x 100媛? in st.session_state["inventory"]:
-            st.session_state["inventory"]["?ㅼ뒪??15g x 100媛?] -= 1
         elif qty == 3:
           r1 = create_standard_row(base_name, 1)
-          r1["?곹뭹紐?] = "?ㅼ뒪??15g x 40媛?
+          r1["상품명"] = "키스틱 15g x 40개"
           kistic_rows.append(r1)
           r2 = create_standard_row(f"{base_name}2", 1)
-          r2["?곹뭹紐?] = "?ㅼ뒪??15g x 100媛?
+          r2["상품명"] = "키스틱 15g x 100개"
           kistic_rows.append(r2)
-          if "?ㅼ뒪??15g x 40媛? in st.session_state["inventory"]:
-            st.session_state["inventory"]["?ㅼ뒪??15g x 40媛?] -= 1
-          if "?ㅼ뒪??15g x 100媛? in st.session_state["inventory"]:
-            st.session_state["inventory"]["?ㅼ뒪??15g x 100媛?] -= 1
         else:
           r_copy = create_standard_row(base_name, qty)
-          r_copy["?곹뭹紐?] = "?ㅼ뒪??15g x 40媛?
+          r_copy["상품명"] = "키스틱 15g x 40개"
           kistic_rows.append(r_copy)
-          if "?ㅼ뒪??15g x 40媛? in st.session_state["inventory"]:
-            st.session_state["inventory"]["?ㅼ뒪??15g x 40媛?] -= qty
       else:
         r_copy = create_standard_row(base_name, qty)
-        r_copy["?곹뭹紐?] = "?ㅼ뒪??15g x 100媛?
+        r_copy["상품명"] = "키스틱 15g x 100개"
         kistic_rows.append(r_copy)
-        if "?ㅼ뒪??15g x 100媛? in st.session_state["inventory"]:
-          st.session_state["inventory"]["?ㅼ뒪??15g x 100媛?] -= qty
 
-    # 留뚮몢 遺꾧린
-    elif "留뚮몢" in p_name or "怨좎텛?≪콈" in p_name:
-      base_name = str(row["?먭꺽_諛쏅뒗遺꾩꽦紐?])
+    # 3. 만두 분기
+    elif "만두" in p_name or "고추잡채" in p_name:
+      base_name = str(row["원격_받는분성명"])
       r_copy = create_standard_row(base_name, qty)
-      r_copy["?곹뭹紐?] = "??諛붿궘??以묓솕 怨좎텛?≪콈 援곕쭔??1.2kg"
+      r_copy["상품명"] = "더 바삭한 중화 고추잡채 군만두 1.2kg"
       frozen_rows.append(r_copy)
-      if "??諛붿궘??以묓솕 怨좎텛?≪콈 援곕쭔??1.2kg" in st.session_state["inventory"]:
-        st.session_state["inventory"][
-            "??諛붿궘??以묓솕 怨좎텛?≪콈 援곕쭔??1.2kg"
-        ] -= qty
 
-    # 源留먯씠 遺꾧린
-    elif "源留먯씠" in p_name:
-      base_name = str(row["?먭꺽_諛쏅뒗遺꾩꽦紐?])
+    # 4. 김말이 분기
+    elif "김말이" in p_name:
+      base_name = str(row["원격_받는분성명"])
       r_copy = create_standard_row(base_name, qty * 3)
-      r_copy["?곹뭹紐?] = "源留먯씠?源400g"
+      r_copy["상품명"] = "김말이튀김400g"
       frozen_rows.append(r_copy)
-      if "源留먯씠?源400g" in st.session_state["inventory"]:
-        st.session_state["inventory"]["源留먯씠?源400g"] -= qty * 3
 
   garam_cols = [
-      "諛쏅뒗遺꾩꽦紐?,
-      "諛쏅뒗遺꾩쟾?붾쾲??,
-      "諛쏅뒗遺꾧린??곕씫泥?,
-      "諛쏅뒗遺꾩슦?몃쾲??,
-      "諛쏅뒗遺꾩＜??,
-      "?댄뭹?섎웾",
-      "諛곗넚硫붿꽭吏1",
-      "異쒕젰??,
-      "?댁엫援щ텇",
-      "湲곕낯?댁엫",
-      "怨좉컼?ъ슜踰덊샇",
-      "?덈챸",
-      "?먮ℓ泥?,
-      "二쇰Ц踰덊샇",
-      "?≪옣踰덊샇",
-      "二쇰Ц??,
-      "?먮ℓ媛",
-      "?뺤궛湲덉븸",
-      "嫄곕옒泥섏퐫??,
+      "받는분성명",
+      "받는분전화번호",
+      "받는분기타연락처",
+      "받는분우편번호",
+      "받는분주소",
+      "내품수량",
+      "배송메세지1",
+      "출력일",
+      "운임구분",
+      "기본운임",
+      "고객사용번호",
+      "품명",
+      "판매처",
+      "주문번호",
+      "주문일",
+      "판매가",
+      "정산금액",
+      "거래처코드",
   ]
   kistic_cols = [
-      "?섎졊?먯씠由?,
-      "?섎졊?먯쟾??,
-      "?섎졊?먰쑕???,
-      "?섎졊?먯슦?몃쾲??,
-      "?섎졊?먯＜??,
-      "?곹뭹?섎웾",
-      "諛곗넚硫붾え",
-      "?쒖“??,
-      "移댄뀒怨좊━",
-      "?덉젅",
-      "諛곗넚 蹂대쪟",
-      "?곹뭹紐?,
-      "?먮ℓ泥?,
-      "二쇰Ц踰덊샇",
-      "諛쒖＜??,
-      "愿由щ쾲??,
-      "?곹깭",
-      "?≪옣踰덊샇",
+      "수령자이름",
+      "수령자전화",
+      "수령자휴대폰",
+      "수령자우편번호",
+      "수령자주소",
+      "상품수량",
+      "배송메모",
+      "제조사",
+      "카테고리",
+      "품절",
+      "배송 보류",
+      "상품명",
+      "판매처",
+      "주문번호",
+      "발주일",
+      "관리번호",
+      "상태",
+      "송장번호",
   ]
 
   garam_df = (
@@ -691,18 +430,18 @@ def process_custom_orders(shopmoa_df, always_df):
       else pd.DataFrame(columns=kistic_cols)
   )
 
-  return garam_df, kistic_df, frozen_df, sales_df, detected_date
+  return garam_df, kistic_df, frozen_df, sales_df, date_str
 
 
-# 2. ?ㅽ뻾 諛??ㅼ슫濡쒕뱶 踰꾪듉 ?뱀뀡
+# 2. 실행 및 다운로드 섹션
 st.markdown("---")
-st.subheader("2. 留욎땄??諛쒖＜??蹂??諛??꾩쟻 ?곗씠??諛섏쁺 ?ㅽ뻾")
+st.subheader("2. 맞춤형 발주서 변환 및 누적 수익 분석 실행")
 
 col_btn1, col_btn2, col_btn3 = st.columns([2, 2, 1])
 
 with col_btn1:
   run_clicked = st.button(
-      "?? 諛쒖＜??蹂??諛??ш퀬李④컧/?꾩쟻 諛섏쁺", type="primary"
+      "🚀 발주서 변환 및 누적 데이터 반영하기", type="primary"
   )
 
 with col_btn2:
@@ -714,7 +453,7 @@ with col_btn2:
       with pd.ExcelWriter(g_io, engine="openpyxl") as writer:
         st.session_state["accumulated_garam"].to_excel(writer, index=False)
       zip_file.writestr(
-          f"媛?뚯떇???듯빀?꾩쟻_諛쒖＜??{current_date_str}.xlsx", g_io.getvalue()
+          f"가람식품_통합누적_발주서_{current_date_str}.xlsx", g_io.getvalue()
       )
 
     if not st.session_state["accumulated_kistic"].empty:
@@ -722,7 +461,7 @@ with col_btn2:
       with pd.ExcelWriter(k_io, engine="openpyxl") as writer:
         st.session_state["accumulated_kistic"].to_excel(writer, index=False)
       zip_file.writestr(
-          f"?ㅼ뒪???듯빀?꾩쟻_諛쒖＜??{current_date_str}.xlsx", k_io.getvalue()
+          f"키스틱_통합누적_발주서_{current_date_str}.xlsx", k_io.getvalue()
       )
 
     if not st.session_state["accumulated_frozen"].empty:
@@ -730,83 +469,142 @@ with col_btn2:
       with pd.ExcelWriter(f_io, engine="openpyxl") as writer:
         st.session_state["accumulated_frozen"].to_excel(writer, index=False)
       zip_file.writestr(
-          f"?됰룞?앺뭹_?듯빀?꾩쟻_諛쒖＜??{current_date_str}.xlsx", f_io.getvalue()
+          f"냉동식품_통합누적_발주서_{current_date_str}.xlsx", f_io.getvalue()
       )
   zip_buffer.seek(0)
 
   st.download_button(
-      label="?뱿 ?꾩쟻 ?듯빀 諛쒖＜??ZIP ?ㅼ슫濡쒕뱶",
+      label="📥 누적 통합 발주서 ZIP 다운로드",
       data=zip_buffer,
-      file_name=f"留덉폆吏???꾩껜?꾩쟻_?듯빀諛쒖＜??{current_date_str}.zip",
+      file_name=f"마켓지니_전체누적_통합발주서_{current_date_str}.zip",
       mime="application/zip",
   )
 
 with col_btn3:
-  if st.button("?㏏ ?꾩껜 珥덇린??):
+  if st.button("🧹 초기화"):
     st.session_state["accumulated_sales"] = pd.DataFrame()
     st.session_state["accumulated_garam"] = pd.DataFrame()
     st.session_state["accumulated_kistic"] = pd.DataFrame()
     st.session_state["accumulated_frozen"] = pd.DataFrame()
-    st.success("珥덇린???꾨즺")
+    st.success("초기화 완료")
     st.rerun()
 
 if run_clicked:
   if shopmoa_file is None and always_file is None:
-    st.warning("理쒖냼 ??媛??댁긽??諛쒖＜???뚯씪???낅줈?쒗빐 二쇱꽭??")
+    st.warning("최소 한 개 이상의 발주서 파일을 업로드해 주세요.")
   else:
     try:
       s_df = pd.read_excel(shopmoa_file) if shopmoa_file else None
       a_df = pd.read_excel(always_file) if always_file else None
 
-      # 1李??뚯떛?섏뿬 ?뚯씪 ???좎쭨 癒쇱? 媛먯?
-      _, _, _, _, detected_date = process_custom_orders(s_df, a_df)
+      garam_df, kistic_df, frozen_df, sales_df, date_str = (
+          process_custom_orders(s_df, a_df)
+      )
 
-      # 以묐났 ?낅줈??寃利?(?대? ?대떦 ?좎쭨 ?곗씠?곌? ?꾩쟻 sales??議댁옱?섎뒗吏 ?뺤씤)
-      existing_sales = st.session_state["accumulated_sales"]
-      if not existing_sales.empty and detected_date in existing_sales[
-          "?낅줈?쒖씪??
-        ].astype(str).values:
-        st.error(
-            f"?좑툘 [以묐났 ?낅줈??諛⑹?] ?대? '{detected_date}' ?쇱옄??諛쒖＜???곗씠?곌?"
-            " ?꾩쟻 諛섏쁺?섏뼱 ?덉뒿?덈떎. ?숈씪???뚯씪? 以묐났 ?곸슜?섏? ?딆뒿?덈떎."
+      if not sales_df.empty:
+        st.session_state["accumulated_sales"] = pd.concat(
+            [st.session_state["accumulated_sales"], sales_df], ignore_index=True
         )
-      else:
-        garam_df, kistic_df, frozen_df, sales_df, date_str = (
-            process_custom_orders(s_df, a_df)
+      if not garam_df.empty:
+        st.session_state["accumulated_garam"] = pd.concat(
+            [st.session_state["accumulated_garam"], garam_df], ignore_index=True
+        )
+      if not kistic_df.empty:
+        st.session_state["accumulated_kistic"] = pd.concat(
+            [
+                st.session_state["accumulated_kistic"],
+                kistic_df,
+            ],
+            ignore_index=True,
+        )
+      if not frozen_df.empty:
+        st.session_state["accumulated_frozen"] = pd.concat(
+            [
+                st.session_state["accumulated_frozen"],
+                frozen_df,
+            ],
+            ignore_index=True,
         )
 
-        if not sales_df.empty:
-          st.session_state["accumulated_sales"] = pd.concat(
-              [st.session_state["accumulated_sales"], sales_df],
-              ignore_index=True,
-          )
-        if not garam_df.empty:
-          st.session_state["accumulated_garam"] = pd.concat(
-              [st.session_state["accumulated_garam"], garam_df],
-              ignore_index=True,
-          )
-        if not kistic_df.empty:
-          st.session_state["accumulated_kistic"] = pd.concat(
-              [
-                  st.session_state["accumulated_kistic"],
-                  kistic_df,
-              ],
-              ignore_index=True,
-          )
-        if not frozen_df.empty:
-          st.session_state["accumulated_frozen"] = pd.concat(
-              [
-                  st.session_state["accumulated_frozen"],
-                  frozen_df,
-              ],
-              ignore_index=True,
-          )
-
-        st.success(
-            f"??[?좎쭨: {date_str}] 諛쒖＜?쒓? ?깃났?곸쑝濡?遺꾩꽍?섏뼱 ?ш퀬 李④컧 諛?
-            " ?꾩쟻 諛섏쁺?섏뿀?듬땲??"
-        )
-        st.rerun()
+      st.success(
+          f"✨ 새로운 데이터가 성공적으로 누적 반영되었습니다! (기준일자: {date_str})"
+      )
+      st.rerun()
 
     except Exception as e:
-      st.error(f"?뚯씪 泥섎━ 以??ㅻ쪟媛 諛쒖깮?덉뒿?덈떎: {e}")
+      st.error(f"파일 처리 중 오류가 발생했습니다: {e}")
+
+# --- [플랫폼별 누적 매출 및 순수익 현황 대시보드] ---
+st.markdown("---")
+st.subheader("📊 [누적 데이터] 플랫폼별 매출 및 순수익 현황")
+
+acc_sales = st.session_state["accumulated_sales"]
+
+if not acc_sales.empty:
+  target_platforms = [
+      "스마트스토어",
+      "옥션",
+      "지마켓",
+      "올웨이즈",
+      "쿠팡",
+      "카카오쇼핑하기",
+  ]
+
+  total_orders = len(acc_sales)
+  total_revenue = acc_sales["판매가"].sum()
+  total_cost = acc_sales["원가"].sum()
+  total_shipping = acc_sales["배송비"].sum()
+  total_platform_fee = acc_sales["플랫폼수수료"].sum()
+  total_net_profit = acc_sales["순수익"].sum()
+
+  m1, m2, m3, m4 = st.columns(4)
+  m1.metric("누적 총 주문 건수", f"{total_orders:,} 건")
+  m2.metric("누적 총 판매 매출액", f"{total_revenue:,.0f} 원")
+  m3.metric(
+      "누적 원가+배송+수수료",
+      f"{(total_cost + total_shipping + total_platform_fee):,.0f} 원",
+  )
+  m4.metric(
+      "누적 총 순수익",
+      f"{total_net_profit:,.0f} 원",
+      delta=(
+          f"마진율 {(total_net_profit/total_revenue*100):.1f}%"
+          if total_revenue > 0
+          else "0%"
+      ),
+  )
+
+  st.markdown("##### 🛒 플랫폼별 누적 매출 및 순수익 상세")
+  platform_summary = (
+      acc_sales.groupby("판매처")
+      .agg(
+          주문건수=("판매가", "count"),
+          총판매가=("판매가", "sum"),
+          총원가=("원가", "sum"),
+          총배송비=("배송비", "sum"),
+          플랫폼수수료합계=("플랫폼수수료", "sum"),
+          총순수익=("순수익", "sum"),
+      )
+      .reindex(target_platforms)
+      .fillna(0)
+      .reset_index()
+  )
+  st.dataframe(platform_summary, use_container_width=True)
+
+  st.markdown("##### 📅 업로드 일자별 누적 요약")
+  date_summary = (
+      acc_sales.groupby("업로드일자")
+      .agg(
+          주문건수=("판매가", "count"),
+          매출액=("판매가", "sum"),
+          순수익=("순수익", "sum"),
+      )
+      .reset_index()
+  )
+  st.dataframe(date_summary, use_container_width=True)
+
+else:
+  st.info(
+      "아직 업로드 및 반영된 매출 데이터가 없습니다. 파일을 업로드하고 버튼을"
+      " 눌러주세요."
+  )
