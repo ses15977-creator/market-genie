@@ -156,8 +156,56 @@ if not acc_sales.empty:
       "원가+배송+수수료 합계",
       f"{(total_cost + total_shipping + total_platform_fee):,.0f} 원",
   )
+  
+  # 마진율 계산을 f-string 안에서 줄바꿈하지 않고 한 줄로 수정
+  margin_rate_str = (
+      f"마진율 {(total_net_profit / total_revenue * 100):.1f}%"
+      if total_revenue > 0
+      else "0%"
+  )
+  
   m4.metric(
       "누적 총 순수익",
       f"{total_net_profit:,.0f} 원",
-      delta=(
-          f"마진율 {(total_net_profit/total_
+      delta=margin_rate_str,
+  )
+
+  with st.expander("🛒 플랫폼별 및 일자별 상세 내역 보기"):
+    target_platforms = [
+        "스마트스토어",
+        "옥션",
+        "지마켓",
+        "올웨이즈",
+        "쿠팡",
+        "카카오쇼핑하기",
+    ]
+    st.markdown("##### 플랫폼별 누적 현황")
+    platform_summary = (
+        acc_sales.groupby("판매처")
+        .agg(
+            주문건수=("판매가", "count"),
+            총판매가=("판매가", "sum"),
+            총원가=("원가", "sum"),
+            총배송비=("배송비", "sum"),
+            플랫폼수수료합계=("플랫폼수수료", "sum"),
+            총순수익=("순수익", "sum"),
+        )
+        .reindex(target_platforms)
+        .fillna(0)
+        .reset_index()
+    )
+    st.dataframe(platform_summary, use_container_width=True)
+
+    st.markdown("##### 업로드 일자별 누적 현황")
+    date_summary = (
+        acc_sales.groupby("업로드일자")
+        .agg(
+            주문건수=("판매가", "count"),
+            매출액=("판매가", "sum"),
+            순수익=("순수익", "sum"),
+        )
+        .reset_index()
+    )
+    st.dataframe(date_summary, use_container_width=True)
+else:
+  st.info("아직 업로드된 판매 데이터가 없습니다. 아래에서 발주서를 업로드해주세요.")
