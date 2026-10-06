@@ -34,7 +34,7 @@ if "inventory" not in st.session_state:
       "체다치즈 부산어묵바 80g x 10개": 300,
   }
 
-# 상품 마스터 관리 (업체구분/분류 필드 추가: 키스틱, 냉동식품, 가람식품)
+# 상품 마스터 관리
 if "product_master" not in st.session_state:
   st.session_state["product_master"] = {
       "키스틱 15g x 40개": {
@@ -42,56 +42,48 @@ if "product_master" not in st.session_state:
           "cost_price": 113 * 40,
           "shipping_fee": 2900,
           "vat_separate": False,
-          "category_type": "키스틱",
       },
       "키스틱 15g x 100개": {
           "selling_price": 19900,
           "cost_price": 113 * 100,
           "shipping_fee": 2900,
           "vat_separate": False,
-          "category_type": "키스틱",
       },
       "더 바삭한 중화 고추잡채 군만두 1.2kg": {
           "selling_price": 13900,
           "cost_price": 4700,
           "shipping_fee": 3900,
           "vat_separate": False,
-          "category_type": "냉동식품",
       },
       "김말이튀김400g": {
           "selling_price": 13900,
           "cost_price": 1700 * 3,
           "shipping_fee": 3900,
           "vat_separate": False,
-          "category_type": "냉동식품",
       },
       "오리지날 부산어묵바 80g x 10개": {
           "selling_price": 18900,
           "cost_price": int(536 * 1.1 * 10),
           "shipping_fee": 4300,
           "vat_separate": True,
-          "category_type": "가람식품",
       },
       "매콤달콤 부산어묵바 80g x 10개": {
           "selling_price": 19900,
           "cost_price": int(560 * 1.1 * 10),
           "shipping_fee": 4300,
           "vat_separate": True,
-          "category_type": "가람식품",
       },
       "오징어야채 부산어묵바 80g x 10개": {
           "selling_price": 20900,
           "cost_price": int(575 * 1.1 * 10),
           "shipping_fee": 4300,
           "vat_separate": True,
-          "category_type": "가람식품",
       },
       "체다치즈 부산어묵바 80g x 10개": {
           "selling_price": 21900,
           "cost_price": int(646 * 1.1 * 10),
           "shipping_fee": 4300,
           "vat_separate": True,
-          "category_type": "가람식품",
       },
   }
 
@@ -196,3 +188,19 @@ if not acc_sales.empty:
         acc_sales.groupby("업로드일자")
         .agg(
             주문건수=("판매가", "count"),
+            매출액=("판매가", "sum"),
+            순수익=("순수익", "sum"),
+        )
+        .reset_index()
+    )
+    st.dataframe(date_summary, use_container_width=True)
+else:
+  st.info(
+      "아직 업로드 및 반영된 데이터가 없습니다. 아래에서 발주서 파일을 업로드해"
+      " 주세요."
+  )
+
+st.markdown("---")
+
+# --- [상품 마스터 및 재고 관리 섹션] ---
+tab_
