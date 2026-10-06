@@ -160,42 +160,4 @@ if not acc_sales.empty:
       "누적 총 순수익",
       f"{total_net_profit:,.0f} 원",
       delta=(
-          f"마진율 {(total_net_profit/total_revenue*100):.1f}%"
-          if total_revenue > 0
-          else "0%"
-      ),
-  )
-
-  with st.expander("🛒 플랫폼별 및 일자별 상세 내역 보기"):
-    target_platforms = [
-        "스마트스토어",
-        "옥션",
-        "지마켓",
-        "올웨이즈",
-        "쿠팡",
-        "카카오쇼핑하기",
-    ]
-    st.markdown("##### 플랫폼별 누적 현황")
-    platform_summary = (
-        acc_sales.groupby("판매처")
-        .agg(
-            주문건수=("판매가", "count"),
-            총판매가=("판매가", "sum"),
-            총원가=("원가", "sum"),
-            총배송비=("배송비", "sum"),
-            플랫폼수수료합계=("플랫폼수수료", "sum"),
-            총순수익=("순수익", "sum"),
-        )
-        .reindex(target_platforms)
-        .fillna(0)
-        .reset_index()
-    )
-    st.dataframe(platform_summary, use_container_width=True)
-
-    st.markdown("##### 업로드 일자별 누적 현황")
-    date_summary = (
-        acc_sales.groupby("업로드일자")
-        .agg(
-            주문건수=("판매가", "count"),
-            매출액=("판매가", "sum"),
-            순수익=("순수익", "sum"),
+          f"마진율 {(total_net_profit/total_
