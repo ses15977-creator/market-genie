@@ -101,7 +101,7 @@ st.write(
     " 그리고 마스터 연동 출고처 자동 분류가 지원됩니다."
 )
 
-# ⚙️ 플랫폼 수수료율 설정
+# ⚙️️ 플랫폼 수수료율 설정
 with st.expander("⚙️ 플랫폼 수수료율 상세 설정 (클릭하여 열기)", expanded=False):
   col_f1, col_f2, col_f3, col_f4, col_f5, col_f6 = st.columns(6)
   with col_f1:
@@ -114,3 +114,82 @@ with st.expander("⚙️ 플랫폼 수수료율 상세 설정 (클릭하여 열�
     fee_coupang = st.number_input("쿠팡", value=10.80, step=0.1, format="%.2f")
   with col_f4:
     fee_gmarket = st.number_input("지마켓", value=13.00, step=0.1, format="%.2f")
+  with col_f5:
+    fee_auction = st.number_input("옥션", value=13.00, step=0.1, format="%.2f")
+  with col_f6:
+    fee_kakao = st.number_input(
+        "카카오쇼핑하기", value=10.00, step=0.1, format="%.2f"
+    )
+
+fee_rates = {
+    "스마트스토어": fee_smart / 100.0,
+    "네이버": fee_smart / 100.0,
+    "올웨이즈": fee_always / 100.0,
+    "쿠팡": fee_coupang / 100.0,
+    "지마켓": fee_gmarket / 100.0,
+    "G마켓": fee_gmarket / 100.0,
+    "옥션": fee_auction / 100.0,
+    "카카오쇼핑하기": fee_kakao / 100.0,
+    "카카오": fee_kakao / 100.0,
+}
+
+st.markdown("---")
+
+# --- [상단 고정 누적 매출 및 순수익 대시보드] ---
+st.subheader("📊 [누적 데이터] 전체 매출 및 순수익 요약 대시보드")
+
+acc_sales = st.session_state["accumulated_sales"]
+
+if not acc_sales.empty:
+  total_orders = len(acc_sales)
+  total_revenue = acc_sales["판매가"].sum()
+  total_cost = acc_sales["원가"].sum()
+  total_shipping = acc_sales["배송비"].sum()
+  total_platform_fee = acc_sales["플랫폼수수료"].sum()
+  total_net_profit = acc_sales["순수익"].sum()
+
+  m1, m2, m3, m4 = st.columns(4)
+  m1.metric("누적 총 주문 건수", f"{total_orders:,} 건")
+  m2.metric("누적 총 판매 매출액", f"{total_revenue:,.0f} 원")
+  m3.metric(
+      "원가+배송+수수료 합계",
+      f"{(total_cost + total_shipping + total_platform_fee):,.0f} 원",
+  )
+  m4.metric(
+      "누적 총 순수익",
+      f"{total_net_profit:,.0f} 원",
+      delta=(
+          f"마진율 {(total_net_profit/total_revenue*100):.1f}%"
+          if total_revenue > 0
+          else "0%"
+      ),
+  )
+
+  with st.expander("🛒 플랫폼별 및 일자별 상세 내역 보기"):
+    target_platforms = [
+        "스마트스토어",
+        "옥션",
+        "지마켓",
+        "올웨이즈",
+        "쿠팡",
+        "카카오쇼핑하기",
+    ]
+    st.markdown("##### 플랫폼별 누적 현황")
+    platform_summary = (
+        acc_sales.groupby("판매처")
+        .agg(
+            주문건수=("판매가", "count"),
+            총판매가=("판매가", "sum"),
+            총원가=("원가", "sum"),
+            총배송비=("배송비", "sum"),
+            플랫폼수수료합계=("플랫폼수수료", "sum"),
+            총순수익=("순수익", "sum"),
+        )
+        .reindex(target_platforms)
+        .fillna(0)
+        .reset_index()
+    )
+    st.dataframe(platform_summary, use_container_width=True)
+
+    st.markdown("##### 업로드 일자별 누적 현황")
+    date_summary =
