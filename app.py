@@ -290,4 +290,81 @@ def process_custom_orders(shopmoa_df, always_df):
       elif "지마켓" in row_str or "G마켓" in row_str:
         detected_channel = "지마켓"
       elif "옥션" in row_str:
-        detected_channel
+        detected_channel = "옥션"
+      elif "카카오" in row_str or "쇼핑하기" in row_str:
+        detected_channel = "카카오쇼핑하기"
+      elif "올웨이즈" in row_str:
+        detected_channel = "올웨이즈"
+
+      if default_channel_name == "샵모아":
+        sname = get_column_value(row, ["수취인명", "수령인", "받는분성명"])
+        phone = get_column_value(
+            row, ["수취인 전화번호", "수령인 연락처", "전화번호"]
+        )
+        mobile = get_column_value(
+            row, ["수취인 핸드폰번호", "수령인 핸드폰", "휴대폰번호", "핸드폰"]
+        )
+        if not mobile:
+          mobile = phone
+        zipcode = get_column_value(row, ["우편번호"])
+        address = get_column_value(row, ["수취인주소", "주소"])
+        p_name = get_column_value(row, ["상품명"])
+        opt_name = get_column_value(row, ["옵션", "상품옵션"])
+        qty_val = get_column_value(row, ["수량", "주문수량"], "1")
+        qty = int(pd.to_numeric(qty_val, errors="coerce") or 1)
+        msg = get_column_value(row, ["배송메세지", "배송메모", "고객요청사항"])
+        order_id = get_column_value(row, ["주문번호", "주문아이디"])
+        invoice_no = get_column_value(
+            row, ["송장번호", "택배송장번호", "운송장번호"]
+        )
+      else:
+        sname = get_column_value(row, ["수령인", "수취인명"])
+        phone = get_column_value(row, ["수령인 연락처", "전화번호"])
+        mobile = get_column_value(row, ["수령인 핸드폰", "핸드폰", "휴대폰번호"])
+        if not mobile:
+          mobile = phone
+        zipcode = get_column_value(row, ["우편번호"])
+        address = get_column_value(row, ["주소", "수취인주소"])
+        p_name = get_column_value(row, ["상품명"])
+        opt_name = get_column_value(row, ["옵션", "상품옵션"])
+        qty_val = get_column_value(row, ["수량", "주문수량"], "1")
+        qty = int(pd.to_numeric(qty_val, errors="coerce") or 1)
+        msg = get_column_value(row, ["배송메모", "배송메세지"])
+        order_id = get_column_value(row, ["주문아이디", "주문번호"])
+        invoice_no = get_column_value(
+            row, ["송장번호", "택배송장번호", "운송장번호"]
+        )
+
+      fin = calculate_item_finance(p_name, opt_name, detected_channel)
+
+      for _ in range(max(1, qty)):
+        sales_data_list.append({
+            "업로드일자": date_str,
+            "판매처": detected_channel,
+            "주문번호": str(order_id),
+            "상품명": fin["카테고리"],
+            "판매가": fin["판매가"],
+            "원가": fin["원가"],
+            "배송비": fin["배송비"],
+            "플랫폼수수료": fin["플랫폼수수료"],
+            "순수익": fin["순수익"],
+        })
+
+      base_row = {
+          "원격_받는분성명": sname,
+          "원격_받는분전화번호": phone,
+          "원격_받는분기타연락처": mobile,
+          "원격_받는분우편번호": zipcode,
+          "원격_받는분주소": address,
+          "상품명_원본": p_name,
+          "옵션_원본": opt_name,
+          "상품수량": qty,
+          "배송메세지1": msg,
+          "주문번호": order_id,
+          "송장번호": invoice_no,
+          "주문일": date_str,
+          "판매처": detected_channel,
+      }
+      frames.append(base_row)
+
+  parse_dataframe(shopmoa_df, "샵
