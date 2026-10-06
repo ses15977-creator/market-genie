@@ -367,4 +367,302 @@ def process_custom_orders(shopmoa_df, always_df):
       }
       frames.append(base_row)
 
-  parse_dataframe(shopmoa_df, "샵
+  parse_dataframe(shopmoa_df, "샵모아")
+  parse_dataframe(always_df, "올웨이즈")
+
+  if not frames:
+    return (
+        pd.DataFrame(),
+        pd.DataFrame(),
+        pd.DataFrame(),
+        pd.DataFrame(),
+        date_str,
+    )
+
+  combined = pd.DataFrame(frames)
+  sales_df = pd.DataFrame(sales_data_list)
+
+  garam_rows = []
+  kistic_rows = []
+  frozen_rows = []
+
+  for _, row in combined.iterrows():
+    p_name = str(row["상품명_원본"])
+    opt_name = str(row["옵션_원본"])
+    qty = int(row["상품수량"])
+
+    def create_garam_row(name, quantity):
+      return {
+          "받는분성명": name,
+          "받는분전화번호": row["원격_받는분전화번호"],
+          "받는분기타연락처": row["원격_받는분기타연락처"],
+          "받는분우편번호": row["원격_받는분우편번호"],
+          "받는분주소": row["원격_받는분주소"],
+          "내품수량": quantity,
+          "배송메세지1": row["배송메세지1"],
+          "출력일": "",
+          "운임구분": "",
+          "기본운임": "",
+          "고객사용번호": "",
+          "품명": "",
+          "판매처": row["판매처"],
+          "주문번호": row["주문번호"],
+          "송장번호": row["송장번호"],
+          "주문일": row["주문일"],
+          "판매가": "",
+          "정산금액": "",
+          "거래처코드": 16,
+      }
+
+    def create_standard_row(name, quantity):
+      return {
+          "수령자이름": name,
+          "수령자전화": row["원격_받는분전화번호"],
+          "수령자휴대폰": row["원격_받는분기타연락처"],
+          "수령자우편번호": row["원격_받는분우편번호"],
+          "수령자주소": row["원격_받는분주소"],
+          "상품수량": quantity,
+          "배송메모": row["배송메세지1"],
+          "제조사": "",
+          "카테고리": "",
+          "품절": "",
+          "배송 보류": "",
+          "상품명": "",
+          "판매처": row["판매처"],
+          "주문번호": row["주문번호"],
+          "발주일": "",
+          "관리번호": "",
+          "상태": "",
+          "송장번호": row["송장번호"],
+      }
+
+    # 어묵바 분기 (가람식품)
+    if "어묵바" in p_name or "어묵바" in opt_name:
+      target_name = "오리지날 부산어묵바 80g x 10개"
+      if "매콤달콤" in opt_name or "매콤한맛" in p_name:
+        target_name = "매콤달콤 부산어묵바 80g x 10개"
+      elif "오징어야채" in opt_name or "오징어야채" in p_name:
+        target_name = "오징어야채 부산어묵바 80g x 10개"
+      elif "체다치즈" in opt_name or "체다치즈" in p_name:
+        target_name = "체다치즈 부산어묵바 80g x 10개"
+
+      base_name = str(row["원격_받는분성명"])
+      for i in range(qty):
+        r_name = f"{base_name}{i+1}" if qty > 1 else base_name
+        r_copy = create_garam_row(r_name, 1)
+        r_copy["품명"] = target_name
+        garam_rows.append(r_copy)
+        if target_name in st.session_state["inventory"]:
+          st.session_state["inventory"][target_name] -= 1
+
+    # 키스틱 분기
+    elif "키스틱" in p_name or "키스틱" in opt_name:
+      is_40 = "40개" in p_name or "40개" in opt_name
+      base_name = str(row["원격_받는분성명"])
+
+      if is_40:
+        if qty == 2:
+          r_copy = create_standard_row(base_name, 1)
+          r_copy["상품명"] = "키스틱 15g x 100개"
+          kistic_rows.append(r_copy)
+          st.session_state["inventory"]["키스틱 15g x 100개"] -= 1
+        elif qty == 3:
+          r1 = create_standard_row(base_name, 1)
+          r1["상품명"] = "키스틱 15g x 40개"
+          kistic_rows.append(r1)
+          r2 = create_standard_row(f"{base_name}2", 1)
+          r2["상품명"] = "키스틱 15g x 100개"
+          kistic_rows.append(r2)
+          st.session_state["inventory"]["키스틱 15g x 40개"] -= 1
+          st.session_state["inventory"]["키스틱 15g x 100개"] -= 1
+        else:
+          r_copy = create_standard_row(base_name, qty)
+          r_copy["상품명"] = "키스틱 15g x 40개"
+          kistic_rows.append(r_copy)
+          st.session_state["inventory"]["키스틱 15g x 40개"] -= qty
+      else:
+        r_copy = create_standard_row(base_name, qty)
+        r_copy["상품명"] = "키스틱 15g x 100개"
+        kistic_rows.append(r_copy)
+        st.session_state["inventory"]["키스틱 15g x 100개"] -= qty
+
+    # 만두 분기
+    elif "만두" in p_name or "고추잡채" in p_name:
+      base_name = str(row["원격_받는분성명"])
+      r_copy = create_standard_row(base_name, qty)
+      r_copy["상품명"] = "더 바삭한 중화 고추잡채 군만두 1.2kg"
+      frozen_rows.append(r_copy)
+      st.session_state["inventory"][
+          "더 바삭한 중화 고추잡채 군만두 1.2kg"
+      ] -= qty
+
+    # 김말이 분기
+    elif "김말이" in p_name:
+      base_name = str(row["원격_받는분성명"])
+      r_copy = create_standard_row(base_name, qty * 3)
+      r_copy["상품명"] = "김말이튀김400g"
+      frozen_rows.append(r_copy)
+      st.session_state["inventory"]["김말이튀김400g"] -= qty * 3
+
+  garam_cols = [
+      "받는분성명",
+      "받는분전화번호",
+      "받는분기타연락처",
+      "받는분우편번호",
+      "받는분주소",
+      "내품수량",
+      "배송메세지1",
+      "출력일",
+      "운임구분",
+      "기본운임",
+      "고객사용번호",
+      "품명",
+      "판매처",
+      "주문번호",
+      "송장번호",
+      "주문일",
+      "판매가",
+      "정산금액",
+      "거래처코드",
+  ]
+  kistic_cols = [
+      "수령자이름",
+      "수령자전화",
+      "수령자휴대폰",
+      "수령자우편번호",
+      "수령자주소",
+      "상품수량",
+      "배송메모",
+      "제조사",
+      "카테고리",
+      "품절",
+      "배송 보류",
+      "상품명",
+      "판매처",
+      "주문번호",
+      "발주일",
+      "관리번호",
+      "상태",
+      "송장번호",
+  ]
+
+  garam_df = (
+      pd.DataFrame(garam_rows)[garam_cols]
+      if garam_rows
+      else pd.DataFrame(columns=garam_cols)
+  )
+  kistic_df = (
+      pd.DataFrame(kistic_rows)[kistic_cols]
+      if kistic_rows
+      else pd.DataFrame(columns=kistic_cols)
+  )
+  frozen_df = (
+      pd.DataFrame(frozen_rows)[kistic_cols]
+      if frozen_rows
+      else pd.DataFrame(columns=kistic_cols)
+  )
+
+  return garam_df, kistic_df, frozen_df, sales_df, date_str
+
+
+# 2. 실행 및 다운로드 버튼 섹션 (발주서 변환 및 ZIP 다운로드)
+st.markdown("---")
+st.subheader("2. 맞춤형 발주서 변환 및 누적 데이터 반영 실행")
+
+col_btn1, col_btn2, col_btn3 = st.columns([2, 2, 1])
+
+with col_btn1:
+  run_clicked = st.button(
+      "🚀 발주서 변환 및 재고차감/누적 반영", type="primary"
+  )
+
+with col_btn2:
+  current_date_str = datetime.now().strftime("%Y-%m-%d")
+  zip_buffer = io.BytesIO()
+  with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+    if not st.session_state["accumulated_garam"].empty:
+      g_io = io.BytesIO()
+      with pd.ExcelWriter(g_io, engine="openpyxl") as writer:
+        st.session_state["accumulated_garam"].to_excel(writer, index=False)
+      zip_file.writestr(
+          f"가람식품_통합누적_발주서_{current_date_str}.xlsx", g_io.getvalue()
+      )
+
+    if not st.session_state["accumulated_kistic"].empty:
+      k_io = io.BytesIO()
+      with pd.ExcelWriter(k_io, engine="openpyxl") as writer:
+        st.session_state["accumulated_kistic"].to_excel(writer, index=False)
+      zip_file.writestr(
+          f"키스틱_통합누적_발주서_{current_date_str}.xlsx", k_io.getvalue()
+      )
+
+    if not st.session_state["accumulated_frozen"].empty:
+      f_io = io.BytesIO()
+      with pd.ExcelWriter(f_io, engine="openpyxl") as writer:
+        st.session_state["accumulated_frozen"].to_excel(writer, index=False)
+      zip_file.writestr(
+          f"냉동식품_통합누적_발주서_{current_date_str}.xlsx", f_io.getvalue()
+      )
+  zip_buffer.seek(0)
+
+  st.download_button(
+      label="📥 누적 통합 발주서 ZIP 다운로드",
+      data=zip_buffer,
+      file_name=f"마켓지니_전체누적_통합발주서_{current_date_str}.zip",
+      mime="application/zip",
+  )
+
+with col_btn3:
+  if st.button("🧹 전체 초기화"):
+    st.session_state["accumulated_sales"] = pd.DataFrame()
+    st.session_state["accumulated_garam"] = pd.DataFrame()
+    st.session_state["accumulated_kistic"] = pd.DataFrame()
+    st.session_state["accumulated_frozen"] = pd.DataFrame()
+    st.success("초기화 완료")
+    st.rerun()
+
+if run_clicked:
+  if shopmoa_file is None and always_file is None:
+    st.warning("최소 한 개 이상의 발주서 파일을 업로드해 주세요.")
+  else:
+    try:
+      s_df = pd.read_excel(shopmoa_file) if shopmoa_file else None
+      a_df = pd.read_excel(always_file) if always_file else None
+
+      garam_df, kistic_df, frozen_df, sales_df, date_str = (
+          process_custom_orders(s_df, a_df)
+      )
+
+      if not sales_df.empty:
+        st.session_state["accumulated_sales"] = pd.concat(
+            [st.session_state["accumulated_sales"], sales_df], ignore_index=True
+        )
+      if not garam_df.empty:
+        st.session_state["accumulated_garam"] = pd.concat(
+            [st.session_state["accumulated_garam"], garam_df], ignore_index=True
+        )
+      if not kistic_df.empty:
+        st.session_state["accumulated_kistic"] = pd.concat(
+            [
+                st.session_state["accumulated_kistic"],
+                kistic_df,
+            ],
+            ignore_index=True,
+        )
+      if not frozen_df.empty:
+        st.session_state["accumulated_frozen"] = pd.concat(
+            [
+                st.session_state["accumulated_frozen"],
+                frozen_df,
+            ],
+            ignore_index=True,
+        )
+
+      st.success(
+          f"✨ 발주서 변환 완료 및 실시간 재고 차감 / 누적 데이터 반영이"
+          f" 완료되었습니다! (기준일자: {date_str})"
+      )
+      st.rerun()
+
+    except Exception as e:
+      st.error(f"파일 처리 중 오류가 발생했습니다: {e}")
