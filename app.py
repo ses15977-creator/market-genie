@@ -218,44 +218,4 @@ with tab_inv:
   st.dataframe(inv_df, use_container_width=True)
 
   with st.form("inventory_form"):
-    st.write("🔧 재고 수동 조정")
-    col_i1, col_i2, col_i3 = st.columns([3, 2, 1])
-    with col_i1:
-      selected_item = st.selectbox(
-          "상품 선택", list(st.session_state["inventory"].keys())
-      )
-    with col_i2:
-      add_qty = st.number_input(
-          "입고/조정 수량 (+/-)", value=0, step=1, format="%d"
-      )
-    with col_i3:
-      submitted_inv = st.form_submit_button("재고 반영")
-    if submitted_inv and add_qty != 0:
-      st.session_state["inventory"][selected_item] += add_qty
-      st.success(f"{selected_item} 재고가 성공적으로 반영되었습니다!")
-      st.rerun()
-
-with tab_prod:
-  st.write("등록된 상품들의 판매가, 원가, 배송비 기준을 관리할 수 있습니다.")
-  prod_list = []
-  for p_name, p_info in st.session_state["product_master"].items():
-    prod_list.append({
-        "상품명": p_name,
-        "판매가": p_info["selling_price"],
-        "원가": p_info["cost_price"],
-        "배송비": p_info["shipping_fee"],
-        "부가세별도여부": (
-            "별도(10%가산)" if p_info["vat_separate"] else "포함"
-        ),
-    })
-  st.dataframe(pd.DataFrame(prod_list), use_container_width=True)
-
-  with st.form("new_product_form"):
-    st.write("✨ 신상품 등록 / 기존 상품 수정")
-    cp1, cp2, cp3 = st.columns(3)
-    with cp1:
-      new_p_name = st.text_input("상품명 (옵션 포함 정확히 입력)")
-      new_s_price = st.number_input("판매가 (원)", value=10000, step=100)
-    with cp2:
-      new_c_price = st.number_input("원가 (원)", value=5000, step=100)
-      new_ship = st.number_input("배송비 (원)", value=3000, step=1
+    st.write("🔧 재고 수동 조정
