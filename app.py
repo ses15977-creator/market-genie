@@ -196,28 +196,3 @@ if not acc_sales.empty:
         acc_sales.groupby("업로드일자")
         .agg(
             주문건수=("판매가", "count"),
-            매출액=("판매가", "sum"),
-            순수익=("순수익", "sum"),
-        )
-        .reset_index()
-    )
-    st.dataframe(date_summary, use_container_width=True)
-else:
-  st.info(
-      "아직 업로드 및 반영된 데이터가 없습니다. 아래에서 발주서 파일을 업로드해"
-      " 주세요."
-  )
-
-st.markdown("---")
-
-# --- [상품 마스터 및 재고 관리 섹션] ---
-tab_inv, tab_prod, tab_history = st.tabs([
-    "📦 실시간 재고 관리",
-    "🏷 상품 마스터 관리",
-    "📥 등록된 원본 발주서 확인 및 재다운로드",
-])
-
-with tab_inv:
-  st.write("현재 창고에 남아 있는 상품별 실시간 재고 현황입니다.")
-  inv_df = pd.DataFrame(
-      list(st
