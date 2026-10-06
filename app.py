@@ -19,9 +19,7 @@ if "accumulated_kistic" not in st.session_state:
 if "accumulated_frozen" not in st.session_state:
   st.session_state["accumulated_frozen"] = pd.DataFrame()
 if "accumulated_raw_orders" not in st.session_state:
-  st.session_state[
-      "accumulated_raw_orders"
-  ] = pd.DataFrame()  # 💡 업로드 원본 데이터 저장용 세션
+  st.session_state["accumulated_raw_orders"] = pd.DataFrame()
 
 # 초기 재고 설정
 if "inventory" not in st.session_state:
@@ -208,7 +206,7 @@ st.markdown("---")
 tab_inv, tab_prod, tab_history = st.tabs([
     "📦 실시간 재고 관리",
     "🏷️ 상품 마스터 관리",
-    "📥 등록된 원말 발주서 확인 및 재다운로드",
+    "📥 등록된 원본 발주서 확인 및 재다운로드",
 ])
 
 with tab_inv:
@@ -254,109 +252,4 @@ with tab_prod:
 
   with st.form("new_product_form"):
     st.write("✨ 신상품 등록 / 기존 상품 수정")
-    cp1, cp2, cp3 = st.columns(3)
-    with cp1:
-      new_p_name = st.text_input("상품명 (옵션 포함 정확히 입력)")
-      new_s_price = st.number_input("판매가 (원)", value=10000, step=100)
-    with cp2:
-      new_c_price = st.number_input("원가 (원)", value=5000, step=100)
-      new_ship = st.number_input("배송비 (원)", value=3000, step=100)
-    with cp3:
-      new_vat = st.checkbox("부가세 별도 (공급가에 10% 추가 계산)")
-      new_inv_qty = st.number_input("초기 재고 수량", value=100, step=10)
-
-    submitted_prod = st.form_submit_button("상품 등록/저장하기")
-    if submitted_prod and new_p_name:
-      st.session_state["product_master"][new_p_name] = {
-          "selling_price": new_s_price,
-          "cost_price": new_c_price,
-          "shipping_fee": new_ship,
-          "vat_separate": new_vat,
-      }
-      if new_p_name not in st.session_state["inventory"]:
-        st.session_state["inventory"][new_p_name] = new_inv_qty
-      st.success(f"'{new_p_name}' 상품이 성공적으로 등록되었습니다!")
-      st.rerun()
-
-with tab_history:
-  st.write(
-      "📌 지금까지 업로드되어 시스템에 반영된 원본 발주서(통합 데이터) 내역입니다."
-      " 날짜별로 다시 엑셀 파일로 다운로드할 수 있습니다."
-  )
-  raw_data = st.session_state["accumulated_raw_orders"]
-  if not raw_data.empty:
-    st.dataframe(raw_data, use_container_width=True)
-
-    # 날짜별 개별 다운로드 지원
-    unique_dates = raw_data["업로드일자"].unique()
-    selected_date_dl = st.selectbox(
-        "다운로드할 업로드 일자 선택", unique_dates
-    )
-
-    if selected_date_dl:
-      sub_df = raw_data[raw_data["업로드일자"] == selected_date_dl]
-      output_io = io.BytesIO()
-      with pd.ExcelWriter(output_io, engine="openpyxl") as writer:
-        sub_df.to_excel(writer, index=False)
-      output_io.seek(0)
-
-      st.download_button(
-          label=(
-              f"📥 [{selected_date_dl}] 업로드 원본 발주서 엑셀 다운로드"
-          ),
-          data=output_io,
-          file_name=f"마켓지니_원본발주서_{selected_date_dl}.xlsx",
-          mime=(
-              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-          ),
-      )
-  else:
-    info_text = (
-        "아직 저장된 업로드 원본 발주서 데이터가 없습니다. 파일을 업로드해"
-        " 주세요."
-    )
-    st.info(info_text)
-
-st.markdown("---")
-
-# 1. 파일 업로드 섹션
-st.subheader("1. 발주서 파일 업로드")
-col1, col2 = st.columns(2)
-
-with col1:
-  shopmoa_file = st.file_uploader(
-      "샵모아 / 통합 발주서 파일 (.xlsx)", type=["xlsx", "xls"], key="shopmoa"
-  )
-
-with col2:
-  always_file = st.file_uploader(
-      "올웨이즈 발주서 파일 (.xlsx)", type=["xlsx", "xls"], key="always"
-  )
-
-
-def calculate_item_finance(product_name, option_name, channel):
-  p_str = str(product_name)
-  o_str = str(option_name)
-  combined_text = p_str + " " + o_str
-
-  matched_key = "기타상품"
-  for key in st.session_state["product_master"].keys():
-    keywords = key.split()
-    if all(kw in combined_text for kw in keywords[:2]):
-      matched_key = key
-      break
-    elif "키스틱" in combined_text and "키스틱" in key:
-      if "40개" in combined_text and "40개" in key:
-        matched_key = key
-        break
-      elif "100개" in combined_text and "100개" in key:
-        matched_key = key
-        break
-    elif "만두" in combined_text or "고추잡채" in combined_text:
-      if "만두" in key or "고추잡채" in key:
-        matched_key = key
-        break
-    elif "김말이" in combined_text and "김말이" in key:
-      matched_key = key
-      break
-    elif "어묵바" in combined
+    cp
